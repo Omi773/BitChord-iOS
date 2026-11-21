@@ -29,6 +29,15 @@ jobs:
             patch -p1 < bitchord-bitperfect.patch
           fi
 
+      # Microsoft deleted its ONNX Runtime package repository (2026-11-17). Whatever version of the
+      # patch was applied, make sure the build uses the verified mirror (same source commit, same
+      # SHA-256 checksums); this does nothing if the patch already did it.
+      - name: Use the mirrored ONNX Runtime package
+        run: |
+          perl -0pi -e 's#https://github.com/microsoft/onnxruntime-swift-package-manager#https://github.com/FutureWorkshops/onnxruntime-swift-package-manager#g; s#exact: "1\.24\.2"#exact: "1.24.3"#' BitChordKit/Package.swift
+          perl -0pi -e 's#https://github.com/microsoft/onnxruntime-swift-package-manager#https://github.com/FutureWorkshops/onnxruntime-swift-package-manager#g; s#b7fb7f7dea8a2469e6335d95a61b8f36d0dc83b2#4107b7abd4cdeb3212de58be2b24fc9844ad44ac#; s#"version" : "1\.24\.2"#"version" : "1.24.3"#' BitChordKit/Package.resolved
+          grep -n "onnxruntime" BitChordKit/Package.swift BitChordKit/Package.resolved
+
       # The first run failed cloning a dependency anonymously ("could not read Username"). Cloning
       # as the workflow's own token avoids anonymous limits, and each resolve is retried.
       - name: Fetch Swift packages
