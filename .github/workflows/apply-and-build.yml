@@ -29,6 +29,23 @@ jobs:
             patch -p1 < bitchord-bitperfect.patch
           fi
 
+      # The first run failed cloning a dependency anonymously ("could not read Username"). Cloning
+      # as the workflow's own token avoids anonymous limits, and each resolve is retried.
+      - name: Fetch Swift packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
+          for attempt in 1 2 3; do
+            if xcodebuild -resolvePackageDependencies -workspace BitChord.xcworkspace -scheme BitChord \
+                 -derivedDataPath .derived-release -skipPackagePluginValidation -skipMacroValidation; then
+              exit 0
+            fi
+            echo "Resolve attempt $attempt failed; retrying in 20 s"
+            sleep 20
+          done
+          exit 1
+
       - name: Kit tests
         continue-on-error: true
         working-directory: BitChordKit
