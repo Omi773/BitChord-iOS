@@ -90,6 +90,40 @@ diff -ruN /tmp/orig/BitChord--main/App/BitChord/Support/L10n.swift BitChord--mai
      /// Trim gaps longer than a second
      static var skipSilenceSubtitle: String { tr("skip_silence_subtitle") }
      /// Sleep timer
+diff -ruN /tmp/orig/BitChord--main/BitChordKit/Package.resolved BitChord--main/BitChordKit/Package.resolved
+--- /tmp/orig/BitChord--main/BitChordKit/Package.resolved	2026-11-11 09:44:16.000000000 +0000
++++ BitChord--main/BitChordKit/Package.resolved	2026-11-21 21:32:33.831574367 +0000
+@@ -13,10 +13,10 @@
+     {
+       "identity" : "onnxruntime-swift-package-manager",
+       "kind" : "remoteSourceControl",
+-      "location" : "https://github.com/microsoft/onnxruntime-swift-package-manager",
++      "location" : "https://github.com/FutureWorkshops/onnxruntime-swift-package-manager",
+       "state" : {
+-        "revision" : "b7fb7f7dea8a2469e6335d95a61b8f36d0dc83b2",
+-        "version" : "1.24.2"
++        "revision" : "4107b7abd4cdeb3212de58be2b24fc9844ad44ac",
++        "version" : "1.24.3"
+       }
+     }
+   ],
+diff -ruN /tmp/orig/BitChord--main/BitChordKit/Package.swift BitChord--main/BitChordKit/Package.swift
+--- /tmp/orig/BitChord--main/BitChordKit/Package.swift	2026-11-11 09:44:16.000000000 +0000
++++ BitChord--main/BitChordKit/Package.swift	2026-11-21 21:32:33.831391346 +0000
+@@ -84,7 +84,12 @@
+     // every other module stays dependency-free.
+     dependencies: [
+         .package(url: "https://github.com/amosavian/AMSMB2.git", from: "4.0.0"),
+-        .package(url: "https://github.com/microsoft/onnxruntime-swift-package-manager", exact: "1.24.2"),
++        // Microsoft deleted microsoft/onnxruntime-swift-package-manager on 2026-11-17, and
++        // download.onnxruntime.ai stopped serving the binaries. This mirror's 1.24.3 is Microsoft's
++        // 1.24.2 commit (b7fb7f7) with only the two binary URLs repointed to its own releases; the
++        // SHA-256 checksums are unchanged, so SwiftPM rejects any altered binary. Go back to the
++        // microsoft URL and "1.24.2" if the upstream repository returns.
++        .package(url: "https://github.com/FutureWorkshops/onnxruntime-swift-package-manager", exact: "1.24.3"),
+     ],
+     targets: modules.map { module in
+         .target(name: module.name, dependencies: module.dependencies, resources: moduleResources[module.name])
 diff -ruN /tmp/orig/BitChord--main/BitChordKit/Sources/BitChordCore/Settings/AppSettings.swift BitChord--main/BitChordKit/Sources/BitChordCore/Settings/AppSettings.swift
 --- /tmp/orig/BitChord--main/BitChordKit/Sources/BitChordCore/Settings/AppSettings.swift	2026-11-11 09:44:16.000000000 +0000
 +++ BitChord--main/BitChordKit/Sources/BitChordCore/Settings/AppSettings.swift	2026-11-21 04:22:17.372011440 +0000
