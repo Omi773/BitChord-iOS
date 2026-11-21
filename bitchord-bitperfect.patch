@@ -1,0 +1,324 @@
+diff -ruN /tmp/orig/BitChord--main/App/BitChord/Features/Settings/SettingsScreen.swift BitChord--main/App/BitChord/Features/Settings/SettingsScreen.swift
+--- /tmp/orig/BitChord--main/App/BitChord/Features/Settings/SettingsScreen.swift	2026-11-11 09:44:16.000000000 +0000
++++ BitChord--main/App/BitChord/Features/Settings/SettingsScreen.swift	2026-11-21 04:22:45.128395921 +0000
+@@ -234,6 +234,9 @@
+             // iOS the detector runs in the app's own tap, so the plain subtitle is always true.
+             SettingsToggleRow(symbol: "speaker.slash.fill", title: L10n.skipSilence,
+                               subtitle: L10n.skipSilenceSubtitle, isOn: $settings.skipSilence)
++        case .bitPerfect:
++            SettingsToggleRow(symbol: "waveform.badge.magnifyingglass", title: L10n.bitPerfectMode,
++                              subtitle: L10n.bitPerfectModeSubtitle, isOn: $settings.bitPerfectMode)
+         case .spatialAudio:
+             // Held off for the length of an Atmos track (the object mix is spatialized already);
+             // said on the row because the switch stays where the listener left it.
+diff -ruN /tmp/orig/BitChord--main/App/BitChord/Features/Settings/SettingsSearch.swift BitChord--main/App/BitChord/Features/Settings/SettingsSearch.swift
+--- /tmp/orig/BitChord--main/App/BitChord/Features/Settings/SettingsSearch.swift	2026-11-11 09:44:16.000000000 +0000
++++ BitChord--main/App/BitChord/Features/Settings/SettingsSearch.swift	2026-11-21 04:22:45.127808423 +0000
+@@ -49,7 +49,7 @@
+     case downloadQuality, downloadWifiOnly
+     // Playback
+     case preferMusicOnly, loudnessNormalization, crossfade, automix, automixPerformance, skipSilence,
+-         spatialAudio, equalizer
++         bitPerfect, spatialAudio, equalizer
+     // Appearance
+     case theme, reduceAnimation, reduceDynamicBlur, fullScreenCoverArt, legacyMeshGradient,
+          animatedCoverArt, animatedCoverCellular, spotifyCanvas, syncedLyrics, lyricsBlur,
+@@ -124,6 +124,7 @@
+             row(.automix, L10n.automix, "crossfade", "smart fade", "mix"),
+             row(.automixPerformance, L10n.automixPerformance, "cpu", "battery"),
+             row(.skipSilence, L10n.skipSilence, "silence"),
++            row(.bitPerfect, L10n.bitPerfectMode, "lossless", "dac", "usb", "exact", "flac"),
+             row(.spatialAudio, L10n.spatialAudio, "surround", "3d"),
+             row(.equalizer, L10n.equalizer, "eq", "bass", "treble"),
+         ]
+diff -ruN /tmp/orig/BitChord--main/App/BitChord/Resources/Localizable.xcstrings BitChord--main/App/BitChord/Resources/Localizable.xcstrings
+--- /tmp/orig/BitChord--main/App/BitChord/Resources/Localizable.xcstrings	2026-11-11 09:44:16.000000000 +0000
++++ BitChord--main/App/BitChord/Resources/Localizable.xcstrings	2026-11-21 04:22:45.154282649 +0000
+@@ -82216,6 +82216,28 @@
+         }
+       }
+     },
++    "bit_perfect_mode" : {
++      "extractionState" : "manual",
++      "localizations" : {
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Bit-perfect mode"
++          }
++        }
++      }
++    },
++    "bit_perfect_mode_subtitle" : {
++      "extractionState" : "manual",
++      "localizations" : {
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Lossless tracks play with no EQ, normalization or crossfade"
++          }
++        }
++      }
++    },
+     "skip_silence" : {
+       "extractionState" : "manual",
+       "localizations" : {
+diff -ruN /tmp/orig/BitChord--main/App/BitChord/Services/PlayerController.swift BitChord--main/App/BitChord/Services/PlayerController.swift
+--- /tmp/orig/BitChord--main/App/BitChord/Services/PlayerController.swift	2026-11-11 09:44:16.000000000 +0000
++++ BitChord--main/App/BitChord/Services/PlayerController.swift	2026-11-21 04:22:45.130302310 +0000
+@@ -1015,6 +1015,9 @@
+         trackers.append(ChangeTracker.track({ settings.skipSilence }) { [weak self] on in
+             self?.engine.skipSilence = on
+         })
++        trackers.append(ChangeTracker.track({ settings.bitPerfectMode }) { [weak self] on in
++            self?.engine.bitPerfectMode = on
++        })
+         trackers.append(ChangeTracker.track({ settings.playbackSpeed }) { [weak self] speed in
+             self?.engine.rate = speed
+         })
+diff -ruN /tmp/orig/BitChord--main/App/BitChord/Support/L10n.swift BitChord--main/App/BitChord/Support/L10n.swift
+--- /tmp/orig/BitChord--main/App/BitChord/Support/L10n.swift	2026-11-11 09:44:16.000000000 +0000
++++ BitChord--main/App/BitChord/Support/L10n.swift	2026-11-21 04:22:45.129742123 +0000
+@@ -1588,6 +1588,10 @@
+     static var skipSilence: String { tr("skip_silence") }
+     /// Unavailable on 32-bit float output
+     static var skipSilenceFloatSubtitle: String { tr("skip_silence_float_subtitle") }
++    /// Bit-perfect mode
++    static var bitPerfectMode: String { tr("bit_perfect_mode") }
++    /// Lossless tracks play unprocessed, with no EQ, normalization or crossfade
++    static var bitPerfectModeSubtitle: String { tr("bit_perfect_mode_subtitle") }
+     /// Trim gaps longer than a second
+     static var skipSilenceSubtitle: String { tr("skip_silence_subtitle") }
+     /// Sleep timer
+diff -ruN /tmp/orig/BitChord--main/BitChordKit/Sources/BitChordCore/Settings/AppSettings.swift BitChord--main/BitChordKit/Sources/BitChordCore/Settings/AppSettings.swift
+--- /tmp/orig/BitChord--main/BitChordKit/Sources/BitChordCore/Settings/AppSettings.swift	2026-11-11 09:44:16.000000000 +0000
++++ BitChord--main/BitChordKit/Sources/BitChordCore/Settings/AppSettings.swift	2026-11-21 04:22:17.372011440 +0000
+@@ -124,6 +124,12 @@
+         didSet { write(.skipSilence, skipSilence) }
+     }
+ 
++    /// Lossless tracks reach the output as decoded: no DSP tap (EQ, widening, normalization) and no
++    /// crossfade or Automix while one plays. Lossy tracks are unaffected.
++    public var bitPerfectMode: Bool = false {
++        didSet { write(.bitPerfectMode, bitPerfectMode) }
++    }
++
+     /// Level every track to the same loudness using YouTube's per-track loudness figure
+     /// (``ResolvedStream/loudnessDb``). On by default: a queue drawn from several sources spans
+     /// mastering eras fifteen decibels apart. It is still a gain, so the audio pipeline readout
+@@ -894,6 +900,7 @@
+         smartFadeEnabled = readBool(.smartFadeEnabled, default: false)
+         automixPerformanceMode = readEnum(.automixPerformanceMode, default: .balanced)
+         skipSilence = readBool(.skipSilence, default: false)
++        bitPerfectMode = readBool(.bitPerfectMode, default: false)
+         loudnessNormalization = readBool(.loudnessNormalization, default: true)
+         dolbyAtmos = readBool(.dolbyAtmos, default: true)
+         migrateDirectSourceStream()
+diff -ruN /tmp/orig/BitChord--main/BitChordKit/Sources/BitChordCore/Settings/AppSettingsKeys.swift BitChord--main/BitChordKit/Sources/BitChordCore/Settings/AppSettingsKeys.swift
+--- /tmp/orig/BitChord--main/BitChordKit/Sources/BitChordCore/Settings/AppSettingsKeys.swift	2026-11-11 09:44:16.000000000 +0000
++++ BitChord--main/BitChordKit/Sources/BitChordCore/Settings/AppSettingsKeys.swift	2026-11-21 04:22:17.371101764 +0000
+@@ -19,6 +19,9 @@
+         case smartFadeEnabled = "smart_fade_enabled"
+         case automixPerformanceMode = "automix_performance_mode"
+         case skipSilence = "skip_silence"
++        /// iOS only: lossless plays with no DSP tap and no transitions, whatever the EQ, widening,
++        /// loudness and Automix settings say. See `AudioPlayerEngine.bitPerfectMode`.
++        case bitPerfectMode = "bit_perfect_mode"
+         case loudnessNormalization = "loudness_normalization"
+         case dolbyAtmos = "dolby_atmos"
+         /// Android's on/off switch for "Direct source stream" (on is Always). Still written beside
+diff -ruN /tmp/orig/BitChord--main/BitChordKit/Sources/Playback/Engine/AudioPlayerEngine+Items.swift BitChord--main/BitChordKit/Sources/Playback/Engine/AudioPlayerEngine+Items.swift
+--- /tmp/orig/BitChord--main/BitChordKit/Sources/Playback/Engine/AudioPlayerEngine+Items.swift	2026-11-11 09:44:16.000000000 +0000
++++ BitChord--main/BitChordKit/Sources/Playback/Engine/AudioPlayerEngine+Items.swift	2026-11-21 04:22:17.372710124 +0000
+@@ -131,6 +131,7 @@
+         case .dolbyAtmos:
+             return .spatialPassthrough
+         case .lossless:
++            if bitPerfectMode { return .bitTransparent }
+             let alters = deck.binding.processor?.altersSignal(for: entry.item, loudnessDb: entry.loudnessDb) ?? false
+             return alters ? .processed : .bitTransparent
+         case .lossy:
+diff -ruN /tmp/orig/BitChord--main/BitChordKit/Sources/Playback/Engine/AudioPlayerEngine.swift BitChord--main/BitChordKit/Sources/Playback/Engine/AudioPlayerEngine.swift
+--- /tmp/orig/BitChord--main/BitChordKit/Sources/Playback/Engine/AudioPlayerEngine.swift	2026-11-11 09:44:16.000000000 +0000
++++ BitChord--main/BitChordKit/Sources/Playback/Engine/AudioPlayerEngine.swift	2026-11-21 04:22:17.372497196 +0000
+@@ -106,6 +106,7 @@
+     var storedSkipSilence = false
+     var storedSubtitle: String?
+     var storedTransitionsSuspended = false
++    var storedBitPerfectMode = false
+     /// The resolved animated covers for the current item; the app sets them, item changes clear them.
+     var storedAnimatedArtworks: [NowPlayingAnimatedArtwork] = []
+ 
+@@ -143,10 +144,28 @@
+     /// at a different moment), or a version swap that owns the standby deck. Also true, whatever it
+     /// was set to, while ``replaceCurrent(with:)`` holds the standby deck.
+     public var transitionsSuspended: Bool {
+-        get { storedTransitionsSuspended || swapTask != nil }
++        get { storedTransitionsSuspended || swapTask != nil || holdsLosslessUntouched }
+         set { storedTransitionsSuspended = newValue }
+     }
+ 
++    /// Bit-perfect mode: a lossless item plays with no processing tap whatever the DSP settings say,
++    /// and no crossfade or Automix starts out of it (a blend of two tracks is not the decoded
++    /// samples). Gapless advances are unaffected. Lossy items are untouched. Playback speed is not
++    /// forced to 1×: the pipeline verdict still reports a speed other than 1× as an alteration.
++    public var bitPerfectMode: Bool {
++        get { storedBitPerfectMode }
++        set {
++            guard newValue != storedBitPerfectMode else { return }
++            storedBitPerfectMode = newValue
++            audioProcessingDidChange()
++        }
++    }
++
++    /// True while bit-perfect mode is on and the item playing is lossless.
++    var holdsLosslessUntouched: Bool {
++        storedBitPerfectMode && active.current?.content == .lossless
++    }
++
+     /// Replaces the artist line on the lock screen, e.g. with the current synced lyric ("♪ …"), as
+     /// the Android notification did. Nil shows the artist.
+     public var nowPlayingSubtitle: String? {
+diff -ruN /tmp/orig/BitChord--main/BitChordKit/Sources/Playback/System/AudioSessionEvents.swift BitChord--main/BitChordKit/Sources/Playback/System/AudioSessionEvents.swift
+--- /tmp/orig/BitChord--main/BitChordKit/Sources/Playback/System/AudioSessionEvents.swift	2026-11-11 09:44:16.000000000 +0000
++++ BitChord--main/BitChordKit/Sources/Playback/System/AudioSessionEvents.swift	2026-11-21 04:22:30.660210166 +0000
+@@ -30,6 +30,29 @@
+     }
+ }
+ 
++/// Which (route, rate) pairs the system has already refused, so a rate a DAC will not run at is asked
++/// for once rather than on every track. iOS answers `setPreferredSampleRate` with success whatever
++/// the hardware can do; the only proof is reading the session's rate back, and a refused rate
++/// otherwise costs a renegotiation (and a stall) per track.
++struct RateSupportCache: Equatable, Sendable {
++    private var refused: Set<String> = []
++
++    static func key(route: String, rate: Double) -> String { "\(route)@\(Int(rate.rounded()))" }
++
++    func isRefused(route: String, rate: Double) -> Bool {
++        refused.contains(Self.key(route: route, rate: rate))
++    }
++
++    mutating func recordRefused(route: String, rate: Double) {
++        refused.insert(Self.key(route: route, rate: rate))
++    }
++
++    /// A rate that was honoured after all (a different cable, a firmware change) is forgotten as refused.
++    mutating func recordAccepted(route: String, rate: Double) {
++        refused.remove(Self.key(route: route, rate: rate))
++    }
++}
++
+ #if os(iOS)
+ /// What the engine needs of its audio session. The real one is ``AudioSessionController``; a
+ /// test substitutes a fake to watch the rate request it receives.
+@@ -55,6 +78,8 @@
+     /// What the session's preferred rate was before the engine asked for a track's rate, restored
+     /// when the route stops being USB.
+     private var originalPreferredSampleRate: Double?
++    private var rateCache = RateSupportCache()
++    private var settleTask: Task<Void, Never>?
+ 
+     /// The sample rate of the track playing now. On a USB route the session is asked for it.
+     var trackSampleRate: Double? {
+@@ -89,6 +114,7 @@
+             let outputs = currentOutputs()
+             if let rate = PreferredSampleRatePolicy.preferredSampleRate(outputs: outputs, trackSampleRate: trackSampleRate) {
+                 logSampleRateReadBack(requested: rate, on: outputs)
++                verifySettledRate(rate, on: outputs)
+             }
+         } catch {
+             PlaybackLog.warning("audio session activation refused: \(error)")
+@@ -118,10 +144,16 @@
+         let outputs = currentOutputs()
+         if let rate = PreferredSampleRatePolicy.preferredSampleRate(outputs: outputs, trackSampleRate: trackSampleRate) {
+             guard session.preferredSampleRate != rate else { return }
++            let route = outputs.map(\.routeName).joined(separator: "+")
++            if rateCache.isRefused(route: route, rate: rate) {
++                PlaybackLog.debug("USB route: \(Int(rate)) Hz refused earlier on \(route); not asking again")
++                return
++            }
+             if originalPreferredSampleRate == nil { originalPreferredSampleRate = session.preferredSampleRate }
+             do {
+                 try session.setPreferredSampleRate(rate)
+                 logSampleRateReadBack(requested: rate, on: outputs)
++                verifySettledRate(rate, on: outputs)
+             } catch {
+                 PlaybackLog.warning("USB route: \(Int(rate)) Hz refused: \(error)")
+             }
+@@ -133,6 +165,32 @@
+         }
+     }
+ 
++    /// A USB DAC renegotiates asynchronously, so the session's rate lags the request. Polls it for up
++    /// to two seconds: when it lands on `rate` the DAC is bit-clean, when it never does the (route,
++    /// rate) pair is remembered as refused and the output status is refreshed so the pipeline sheet
++    /// shows the rate iOS really runs at (and its "converted by iOS" verdict) rather than the ask.
++    /// Only judged while the session is active: an inactive session still reports its old rate.
++    private func verifySettledRate(_ rate: Double, on outputs: [AudioRouting.Kind]) {
++        settleTask?.cancel()
++        guard isActive else { return }
++        let route = outputs.map(\.routeName).joined(separator: "+")
++        settleTask = Task { @MainActor [weak self] in
++            for _ in 0..<20 {
++                try? await Task.sleep(nanoseconds: 100_000_000)
++                guard !Task.isCancelled, let self else { return }
++                if abs(self.session.sampleRate - rate) < 1 {
++                    self.rateCache.recordAccepted(route: route, rate: rate)
++                    AudioOutputStatus.shared.refreshFromAudioSession(self.session)
++                    return
++                }
++            }
++            guard !Task.isCancelled, let self else { return }
++            self.rateCache.recordRefused(route: route, rate: rate)
++            PlaybackLog.warning("USB route: \(Int(rate)) Hz not honoured by \(route); session stayed at \(Int(self.session.sampleRate)) Hz, so iOS converts")
++            AudioOutputStatus.shared.refreshFromAudioSession(self.session)
++        }
++    }
++
+     /// The rate is only a preference: read back what the session runs at, so a shared log shows
+     /// whether the DAC honoured it. An inactive session still reports its old rate, so
+     /// ``activate()`` reads it back again.
+@@ -191,6 +249,7 @@
+     }
+ 
+     deinit {
++        settleTask?.cancel()
+         observers.forEach(NotificationCenter.default.removeObserver)
+     }
+ }
+diff -ruN /tmp/orig/BitChord--main/BitChordKit/Tests/PlaybackTests/BitPerfectModeTests.swift BitChord--main/BitChordKit/Tests/PlaybackTests/BitPerfectModeTests.swift
+--- /tmp/orig/BitChord--main/BitChordKit/Tests/PlaybackTests/BitPerfectModeTests.swift	1970-01-01 00:00:00.000000000 +0000
++++ BitChord--main/BitChordKit/Tests/PlaybackTests/BitPerfectModeTests.swift	2026-11-21 04:23:01.519550498 +0000
+@@ -0,0 +1,31 @@
++import XCTest
++@testable import Playback
++
++/// The refused-rate memory behind the USB sample-rate negotiation.
++final class RateSupportCacheTests: XCTestCase {
++    func testARateIsNotRefusedUntilRecorded() {
++        let cache = RateSupportCache()
++        XCTAssertFalse(cache.isRefused(route: "USB", rate: 176_400))
++    }
++
++    func testARefusedRateIsRememberedPerRouteAndRate() {
++        var cache = RateSupportCache()
++        cache.recordRefused(route: "USB", rate: 176_400)
++        XCTAssertTrue(cache.isRefused(route: "USB", rate: 176_400))
++        XCTAssertFalse(cache.isRefused(route: "USB", rate: 88_200), "another rate on the same DAC is still worth asking for")
++        XCTAssertFalse(cache.isRefused(route: "Headphones", rate: 176_400), "another route is a different device")
++    }
++
++    func testAnAcceptedRateIsForgottenAsRefused() {
++        var cache = RateSupportCache()
++        cache.recordRefused(route: "USB", rate: 96_000)
++        cache.recordAccepted(route: "USB", rate: 96_000)
++        XCTAssertFalse(cache.isRefused(route: "USB", rate: 96_000))
++    }
++
++    func testRatesAreKeyedToTheNearestHertz() {
++        var cache = RateSupportCache()
++        cache.recordRefused(route: "USB", rate: 44_100.2)
++        XCTAssertTrue(cache.isRefused(route: "USB", rate: 44_100))
++    }
++}
