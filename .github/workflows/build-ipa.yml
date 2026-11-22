@@ -42,14 +42,83 @@ jobs:
           xcodebuild -version
           sysctl -n hw.ncpu
 
-      # Microsoft deleted its ONNX Runtime package repository (2026-11-17). The bit-perfect update
-      # already points at a mirror with the same source commit and SHA-256 checksums; this repeats
-      # that rewrite only if an older Package.swift is still in the repo.
-      - name: Use the mirrored ONNX Runtime package
+      # ---- ONNX Runtime, downloaded by this workflow instead of by Xcode ----
+      # Microsoft deleted its ONNX Runtime package repository (2026-11-17). Letting Xcode download
+      # the mirror's two large binaries hung for 20+ minutes in earlier runs, so they are fetched
+      # here with timeouts and retries, checked against Microsoft's SHA-256 checksums, and used as
+      # a local package. The mirror's source is Microsoft's own commit with only two URLs changed.
+      - name: Restore the ONNX Runtime copy
+        id: onnx
+        if: ${{ !inputs.skip_caches }}
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ThirdParty/onnxruntime-swift-package-manager
+          key: onnx-v1-1.24.3
+
+      - name: Download ONNX Runtime
+        if: ${{ steps.onnx.outputs.cache-hit != 'true' }}
+        timeout-minutes: 20
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          perl -0pi -e 's#https://github.com/microsoft/onnxruntime-swift-package-manager#https://github.com/FutureWorkshops/onnxruntime-swift-package-manager#g; s#exact: "1\.24\.2"#exact: "1.24.3"#' BitChordKit/Package.swift
-          perl -0pi -e 's#https://github.com/microsoft/onnxruntime-swift-package-manager#https://github.com/FutureWorkshops/onnxruntime-swift-package-manager#g; s#b7fb7f7dea8a2469e6335d95a61b8f36d0dc83b2#4107b7abd4cdeb3212de58be2b24fc9844ad44ac#; s#"version" : "1\.24\.2"#"version" : "1.24.3"#' BitChordKit/Package.resolved
-          grep -n "onnxruntime" BitChordKit/Package.swift BitChordKit/Package.resolved
+          set -euo pipefail
+          rm -rf ThirdParty/onnxruntime-swift-package-manager
+          mkdir -p ThirdParty
+          git clone --depth 1 --branch 1.24.3 https://github.com/FutureWorkshops/onnxruntime-swift-package-manager.git ThirdParty/onnxruntime-swift-package-manager
+          cd ThirdParty/onnxruntime-swift-package-manager
+          test "$(git rev-parse HEAD)" = "4107b7abd4cdeb3212de58be2b24fc9844ad44ac"
+          rm -rf .git
+          for f in pod-archive-onnxruntime-c-1.24.2.zip pod-archive-onnxruntime-extensions-c-0.13.0.zip; do
+            ok=0
+            for attempt in 1 2 3; do
+              if curl -fL --retry 2 --connect-timeout 20 --max-time 300 -sS -o "$f" \
+                   "https://github.com/FutureWorkshops/onnxruntime-swift-package-manager/releases/download/1.24.3/$f"; then
+                ok=1; break
+              fi
+              echo "Download of $f failed (attempt $attempt)"; sleep 10
+            done
+            [ "$ok" = 1 ] || { echo "Could not download $f"; exit 1; }
+            ls -l "$f"
+          done
+          shasum -a 256 -c <<'SUMS'
+          f7100a992d2a8135168c8afd831e6a58b465349101982aa58b3e11d36e600b54  pod-archive-onnxruntime-c-1.24.2.zip
+          346522d1171d4c99cb0908fa8e4e9330a4a6aad39cd83ce36eb654437b33e6b5  pod-archive-onnxruntime-extensions-c-0.13.0.zip
+          SUMS
+          python3 - <<'PY'
+          s = open("Package.swift").read()
+          i = s.index("// Add the ORT CocoaPods C/C++ pod archive as a binary target.")
+          s = s[:i] + (
+              "// Local archives, downloaded and checksum-verified by the CI workflow.\n"
+              'package.targets.append(Target.binaryTarget(name: "onnxruntime", path: "pod-archive-onnxruntime-c-1.24.2.zip"))\n'
+              'package.targets.append(Target.binaryTarget(name: "onnxruntime_extensions", path: "pod-archive-onnxruntime-extensions-c-0.13.0.zip"))\n'
+          )
+          open("Package.swift", "w").write(s)
+          PY
+
+      - name: Save the ONNX Runtime copy
+        if: ${{ !inputs.skip_caches && steps.onnx.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ThirdParty/onnxruntime-swift-package-manager
+          key: onnx-v1-1.24.3
+
+      - name: Point BitChordKit at the local ONNX Runtime
+        run: |
+          python3 - <<'PY'
+          import json, re
+          p = "BitChordKit/Package.swift"
+          s = open(p).read()
+          s, n = re.subn(r'\.package\(url: "https://github\.com/(?:microsoft|FutureWorkshops)/onnxruntime-swift-package-manager", exact: "[0-9.]+"\),',
+                         '.package(path: "../ThirdParty/onnxruntime-swift-package-manager"),', s)
+          if n == 0 and "../ThirdParty/onnxruntime-swift-package-manager" not in s:
+              raise SystemExit("ONNX Runtime dependency line not found in BitChordKit/Package.swift")
+          open(p, "w").write(s)
+          p = "BitChordKit/Package.resolved"
+          r = json.load(open(p))
+          r["pins"] = [x for x in r["pins"] if x["identity"] != "onnxruntime-swift-package-manager"]
+          json.dump(r, open(p, "w"), indent=2)
+          PY
+          grep -n "onnxruntime" BitChordKit/Package.swift
 
       # ---- Swift packages (cached) ----
       - name: Restore the Swift package cache
