@@ -131,6 +131,7 @@ extension AudioPlayerEngine {
         case .dolbyAtmos:
             return .spatialPassthrough
         case .lossless:
+            if bitPerfectMode { return .bitTransparent }
             let alters = deck.binding.processor?.altersSignal(for: entry.item, loudnessDb: entry.loudnessDb) ?? false
             return alters ? .processed : .bitTransparent
         case .lossy:

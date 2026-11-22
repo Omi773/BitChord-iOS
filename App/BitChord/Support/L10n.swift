@@ -1588,6 +1588,10 @@ enum L10n {
     static var skipSilence: String { tr("skip_silence") }
     /// Unavailable on 32-bit float output
     static var skipSilenceFloatSubtitle: String { tr("skip_silence_float_subtitle") }
+    /// Bit-perfect mode
+    static var bitPerfectMode: String { tr("bit_perfect_mode") }
+    /// Lossless tracks play unprocessed, with no EQ, normalization or crossfade
+    static var bitPerfectModeSubtitle: String { tr("bit_perfect_mode_subtitle") }
     /// Trim gaps longer than a second
     static var skipSilenceSubtitle: String { tr("skip_silence_subtitle") }
     /// Sleep timer

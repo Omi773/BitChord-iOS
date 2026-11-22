@@ -124,6 +124,12 @@ public final class AppSettings {
         didSet { write(.skipSilence, skipSilence) }
     }
 
+    /// Lossless tracks reach the output as decoded: no DSP tap (EQ, widening, normalization) and no
+    /// crossfade or Automix while one plays. Lossy tracks are unaffected.
+    public var bitPerfectMode: Bool = false {
+        didSet { write(.bitPerfectMode, bitPerfectMode) }
+    }
+
     /// Level every track to the same loudness using YouTube's per-track loudness figure
     /// (``ResolvedStream/loudnessDb``). On by default: a queue drawn from several sources spans
     /// mastering eras fifteen decibels apart. It is still a gain, so the audio pipeline readout
@@ -894,6 +900,7 @@ public final class AppSettings {
         smartFadeEnabled = readBool(.smartFadeEnabled, default: false)
         automixPerformanceMode = readEnum(.automixPerformanceMode, default: .balanced)
         skipSilence = readBool(.skipSilence, default: false)
+        bitPerfectMode = readBool(.bitPerfectMode, default: false)
         loudnessNormalization = readBool(.loudnessNormalization, default: true)
         dolbyAtmos = readBool(.dolbyAtmos, default: true)
         migrateDirectSourceStream()

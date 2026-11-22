@@ -19,6 +19,9 @@ extension AppSettings {
         case smartFadeEnabled = "smart_fade_enabled"
         case automixPerformanceMode = "automix_performance_mode"
         case skipSilence = "skip_silence"
+        /// iOS only: lossless plays with no DSP tap and no transitions, whatever the EQ, widening,
+        /// loudness and Automix settings say. See `AudioPlayerEngine.bitPerfectMode`.
+        case bitPerfectMode = "bit_perfect_mode"
         case loudnessNormalization = "loudness_normalization"
         case dolbyAtmos = "dolby_atmos"
         /// Android's on/off switch for "Direct source stream" (on is Always). Still written beside

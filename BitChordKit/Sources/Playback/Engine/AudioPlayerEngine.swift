@@ -106,6 +106,7 @@ public final class AudioPlayerEngine {
     var storedSkipSilence = false
     var storedSubtitle: String?
     var storedTransitionsSuspended = false
+    var storedBitPerfectMode = false
     /// The resolved animated covers for the current item; the app sets them, item changes clear them.
     var storedAnimatedArtworks: [NowPlayingAnimatedArtwork] = []
 
@@ -143,8 +144,26 @@ public final class AudioPlayerEngine {
     /// at a different moment), or a version swap that owns the standby deck. Also true, whatever it
     /// was set to, while ``replaceCurrent(with:)`` holds the standby deck.
     public var transitionsSuspended: Bool {
-        get { storedTransitionsSuspended || swapTask != nil }
+        get { storedTransitionsSuspended || swapTask != nil || holdsLosslessUntouched }
         set { storedTransitionsSuspended = newValue }
+    }
+
+    /// Bit-perfect mode: a lossless item plays with no processing tap whatever the DSP settings say,
+    /// and no crossfade or Automix starts out of it (a blend of two tracks is not the decoded
+    /// samples). Gapless advances are unaffected. Lossy items are untouched. Playback speed is not
+    /// forced to 1×: the pipeline verdict still reports a speed other than 1× as an alteration.
+    public var bitPerfectMode: Bool {
+        get { storedBitPerfectMode }
+        set {
+            guard newValue != storedBitPerfectMode else { return }
+            storedBitPerfectMode = newValue
+            audioProcessingDidChange()
+        }
+    }
+
+    /// True while bit-perfect mode is on and the item playing is lossless.
+    var holdsLosslessUntouched: Bool {
+        storedBitPerfectMode && active.current?.content == .lossless
     }
 
     /// Replaces the artist line on the lock screen, e.g. with the current synced lyric ("♪ …"), as

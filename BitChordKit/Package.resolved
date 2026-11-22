@@ -13,10 +13,10 @@
     {
       "identity" : "onnxruntime-swift-package-manager",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/microsoft/onnxruntime-swift-package-manager",
+      "location" : "https://github.com/FutureWorkshops/onnxruntime-swift-package-manager",
       "state" : {
-        "revision" : "b7fb7f7dea8a2469e6335d95a61b8f36d0dc83b2",
-        "version" : "1.24.2"
+        "revision" : "4107b7abd4cdeb3212de58be2b24fc9844ad44ac",
+        "version" : "1.24.3"
       }
     }
   ],

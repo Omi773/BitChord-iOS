@@ -84,7 +84,12 @@ let package = Package(
     // every other module stays dependency-free.
     dependencies: [
         .package(url: "https://github.com/amosavian/AMSMB2.git", from: "4.0.0"),
-        .package(url: "https://github.com/microsoft/onnxruntime-swift-package-manager", exact: "1.24.2"),
+        // Microsoft deleted microsoft/onnxruntime-swift-package-manager on 2026-11-17, and
+        // download.onnxruntime.ai stopped serving the binaries. This mirror's 1.24.3 is Microsoft's
+        // 1.24.2 commit (b7fb7f7) with only the two binary URLs repointed to its own releases; the
+        // SHA-256 checksums are unchanged, so SwiftPM rejects any altered binary. Go back to the
+        // microsoft URL and "1.24.2" if the upstream repository returns.
+        .package(url: "https://github.com/FutureWorkshops/onnxruntime-swift-package-manager", exact: "1.24.3"),
     ],
     targets: modules.map { module in
         .target(name: module.name, dependencies: module.dependencies, resources: moduleResources[module.name])

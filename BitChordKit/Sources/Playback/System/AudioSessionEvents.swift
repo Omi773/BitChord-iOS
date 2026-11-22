@@ -30,6 +30,29 @@ enum PreferredSampleRatePolicy {
     }
 }
 
+/// Which (route, rate) pairs the system has already refused, so a rate a DAC will not run at is asked
+/// for once rather than on every track. iOS answers `setPreferredSampleRate` with success whatever
+/// the hardware can do; the only proof is reading the session's rate back, and a refused rate
+/// otherwise costs a renegotiation (and a stall) per track.
+struct RateSupportCache: Equatable, Sendable {
+    private var refused: Set<String> = []
+
+    static func key(route: String, rate: Double) -> String { "\(route)@\(Int(rate.rounded()))" }
+
+    func isRefused(route: String, rate: Double) -> Bool {
+        refused.contains(Self.key(route: route, rate: rate))
+    }
+
+    mutating func recordRefused(route: String, rate: Double) {
+        refused.insert(Self.key(route: route, rate: rate))
+    }
+
+    /// A rate that was honoured after all (a different cable, a firmware change) is forgotten as refused.
+    mutating func recordAccepted(route: String, rate: Double) {
+        refused.remove(Self.key(route: route, rate: rate))
+    }
+}
+
 #if os(iOS)
 /// What the engine needs of its audio session. The real one is ``AudioSessionController``; a
 /// test substitutes a fake to watch the rate request it receives.
@@ -55,6 +78,8 @@ final class AudioSessionController {
     /// What the session's preferred rate was before the engine asked for a track's rate, restored
     /// when the route stops being USB.
     private var originalPreferredSampleRate: Double?
+    private var rateCache = RateSupportCache()
+    private var settleTask: Task<Void, Never>?
 
     /// The sample rate of the track playing now. On a USB route the session is asked for it.
     var trackSampleRate: Double? {
@@ -89,6 +114,7 @@ final class AudioSessionController {
             let outputs = currentOutputs()
             if let rate = PreferredSampleRatePolicy.preferredSampleRate(outputs: outputs, trackSampleRate: trackSampleRate) {
                 logSampleRateReadBack(requested: rate, on: outputs)
+                verifySettledRate(rate, on: outputs)
             }
         } catch {
             PlaybackLog.warning("audio session activation refused: \(error)")
@@ -118,10 +144,16 @@ final class AudioSessionController {
         let outputs = currentOutputs()
         if let rate = PreferredSampleRatePolicy.preferredSampleRate(outputs: outputs, trackSampleRate: trackSampleRate) {
             guard session.preferredSampleRate != rate else { return }
+            let route = outputs.map(\.routeName).joined(separator: "+")
+            if rateCache.isRefused(route: route, rate: rate) {
+                PlaybackLog.debug("USB route: \(Int(rate)) Hz refused earlier on \(route); not asking again")
+                return
+            }
             if originalPreferredSampleRate == nil { originalPreferredSampleRate = session.preferredSampleRate }
             do {
                 try session.setPreferredSampleRate(rate)
                 logSampleRateReadBack(requested: rate, on: outputs)
+                verifySettledRate(rate, on: outputs)
             } catch {
                 PlaybackLog.warning("USB route: \(Int(rate)) Hz refused: \(error)")
             }
@@ -130,6 +162,32 @@ final class AudioSessionController {
             // 0 is the session's "no preference"; a refusal leaves the USB rate, which is harmless
             // on a route that resamples anyway.
             try? session.setPreferredSampleRate(original)
+        }
+    }
+
+    /// A USB DAC renegotiates asynchronously, so the session's rate lags the request. Polls it for up
+    /// to two seconds: when it lands on `rate` the DAC is bit-clean, when it never does the (route,
+    /// rate) pair is remembered as refused and the output status is refreshed so the pipeline sheet
+    /// shows the rate iOS really runs at (and its "converted by iOS" verdict) rather than the ask.
+    /// Only judged while the session is active: an inactive session still reports its old rate.
+    private func verifySettledRate(_ rate: Double, on outputs: [AudioRouting.Kind]) {
+        settleTask?.cancel()
+        guard isActive else { return }
+        let route = outputs.map(\.routeName).joined(separator: "+")
+        settleTask = Task { @MainActor [weak self] in
+            for _ in 0..<20 {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+                guard !Task.isCancelled, let self else { return }
+                if abs(self.session.sampleRate - rate) < 1 {
+                    self.rateCache.recordAccepted(route: route, rate: rate)
+                    AudioOutputStatus.shared.refreshFromAudioSession(self.session)
+                    return
+                }
+            }
+            guard !Task.isCancelled, let self else { return }
+            self.rateCache.recordRefused(route: route, rate: rate)
+            PlaybackLog.warning("USB route: \(Int(rate)) Hz not honoured by \(route); session stayed at \(Int(self.session.sampleRate)) Hz, so iOS converts")
+            AudioOutputStatus.shared.refreshFromAudioSession(self.session)
         }
     }
 
@@ -191,6 +249,7 @@ final class AudioSessionController {
     }
 
     deinit {
+        settleTask?.cancel()
         observers.forEach(NotificationCenter.default.removeObserver)
     }
 }

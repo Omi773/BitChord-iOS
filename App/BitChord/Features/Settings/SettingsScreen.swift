@@ -234,6 +234,9 @@ struct SettingsScreen: View {
             // iOS the detector runs in the app's own tap, so the plain subtitle is always true.
             SettingsToggleRow(symbol: "speaker.slash.fill", title: L10n.skipSilence,
                               subtitle: L10n.skipSilenceSubtitle, isOn: $settings.skipSilence)
+        case .bitPerfect:
+            SettingsToggleRow(symbol: "waveform.badge.magnifyingglass", title: L10n.bitPerfectMode,
+                              subtitle: L10n.bitPerfectModeSubtitle, isOn: $settings.bitPerfectMode)
         case .spatialAudio:
             // Held off for the length of an Atmos track (the object mix is spatialized already);
             // said on the row because the switch stays where the listener left it.

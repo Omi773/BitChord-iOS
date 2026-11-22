@@ -1015,6 +1015,9 @@ final class PlayerController {
         trackers.append(ChangeTracker.track({ settings.skipSilence }) { [weak self] on in
             self?.engine.skipSilence = on
         })
+        trackers.append(ChangeTracker.track({ settings.bitPerfectMode }) { [weak self] on in
+            self?.engine.bitPerfectMode = on
+        })
         trackers.append(ChangeTracker.track({ settings.playbackSpeed }) { [weak self] speed in
             self?.engine.rate = speed
         })

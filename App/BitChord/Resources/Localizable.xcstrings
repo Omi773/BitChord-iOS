@@ -82216,6 +82216,28 @@
         }
       }
     },
+    "bit_perfect_mode" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bit-perfect mode"
+          }
+        }
+      }
+    },
+    "bit_perfect_mode_subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lossless tracks play with no EQ, normalization or crossfade"
+          }
+        }
+      }
+    },
     "skip_silence" : {
       "extractionState" : "manual",
       "localizations" : {
