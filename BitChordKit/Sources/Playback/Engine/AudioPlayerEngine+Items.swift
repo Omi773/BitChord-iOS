@@ -59,6 +59,12 @@ extension AudioPlayerEngine {
                 // Rate first, then play: on a USB DAC the session's rate is the DAC's, and asking
                 // once the deck plays would re-clock it under the track's opening.
                 self.audioSession?.trackSampleRate = entry.trackFormat.sampleRate
+                // Bit-perfect: the deck is empty and silent here, so the session can be restarted
+                // for a DAC that kept its old clock while the last track played.
+                if self.bitPerfectMode, let session = self.audioSession, session.trackRateIsPending {
+                    await session.settleTrackSampleRate()
+                    guard generation == self.loadGeneration, deck === self.active else { return }
+                }
                 #endif
                 if self.playWhenReady { deck.play() } else { deck.pause() }
                 deck.setCurrent(entry, at: at)
@@ -265,6 +271,20 @@ extension AudioPlayerEngine {
         // Gapless and crossfade advances ask here, as nothing runs before them; after `openItem`,
         // which asked before play, it is the same rate and a no-op.
         audioSession?.trackSampleRate = entry.trackFormat.sampleRate
+        // A gapless advance reaches here with the deck playing on the old clock: in bit-perfect
+        // mode pause for the moment the DAC needs to re-clock, then carry on.
+        if bitPerfectMode, let session = audioSession, session.trackRateIsPending {
+            let deck = active
+            let id = entry.item.id
+            Task { [weak self] in
+                guard let self, deck === self.active, id == self.currentItem?.id else { return }
+                let wasPlaying = deck.isPlaying
+                deck.pause()
+                await session.settleTrackSampleRate()
+                guard deck === self.active, id == self.currentItem?.id else { return }
+                if wasPlaying, self.playWhenReady { deck.play() }
+            }
+        }
         #endif
         if skipSilence {
             applySilenceMap(to: entry)

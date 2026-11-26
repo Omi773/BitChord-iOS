@@ -62,6 +62,16 @@ protocol AudioSessionControlling: AnyObject {
     func activate()
     func allowMultichannelContent()
     func mediaServicesWereReset()
+    /// True while a USB route has been asked for the track's rate and still runs at another one.
+    var trackRateIsPending: Bool { get }
+    /// Brings the hardware to the track's rate. A DAC keeps the clock it started with while audio
+    /// runs, so with nothing playing this may restart the session to make it re-clock.
+    func settleTrackSampleRate() async
+}
+
+extension AudioSessionControlling {
+    var trackRateIsPending: Bool { false }
+    func settleTrackSampleRate() async {}
 }
 
 extension AudioSessionController: AudioSessionControlling {}
@@ -185,10 +195,76 @@ final class AudioSessionController {
                 }
             }
             guard !Task.isCancelled, let self else { return }
-            self.rateCache.recordRefused(route: route, rate: rate)
-            PlaybackLog.warning("USB route: \(Int(rate)) Hz not honoured by \(route); session stayed at \(Int(self.session.sampleRate)) Hz, so iOS converts")
+            // Not a refusal: while audio runs a DAC keeps its clock, and ``settleTrackSampleRate()``
+            // restarts the session between tracks to move it.
+            PlaybackLog.info("USB route: \(Int(rate)) Hz asked of \(route); session still at \(Int(self.session.sampleRate)) Hz")
             AudioOutputStatus.shared.refreshFromAudioSession(self.session)
         }
+    }
+
+    var trackRateIsPending: Bool {
+        let outputs = currentOutputs()
+        guard isActive,
+              let rate = PreferredSampleRatePolicy.preferredSampleRate(outputs: outputs, trackSampleRate: trackSampleRate)
+        else { return false }
+        let route = outputs.map(\.routeName).joined(separator: "+")
+        return abs(session.sampleRate - rate) >= 1 && !rateCache.isRefused(route: route, rate: rate)
+    }
+
+    /// Called with the deck paused (between tracks). Waits briefly for a DAC that follows the request
+    /// by itself; if the session still runs at the old rate, deactivates and reactivates it with the
+    /// new preferred rate, which is what makes a USB DAC switch clocks. A rate is only remembered as
+    /// refused when the restart really happened and the DAC still did not take it.
+    func settleTrackSampleRate() async {
+        guard isActive else { return }
+        let outputs = currentOutputs()
+        guard let rate = PreferredSampleRatePolicy.preferredSampleRate(outputs: outputs, trackSampleRate: trackSampleRate),
+              abs(session.sampleRate - rate) >= 1 else { return }
+        let route = outputs.map(\.routeName).joined(separator: "+")
+        guard !rateCache.isRefused(route: route, rate: rate) else { return }
+        settleTask?.cancel()
+        if await waitForSessionRate(rate, tries: 4) {
+            rateCache.recordAccepted(route: route, rate: rate)
+            AudioOutputStatus.shared.refreshFromAudioSession(session)
+            return
+        }
+        PlaybackLog.info("USB route: session stays at \(Int(session.sampleRate)) Hz; restarting it for \(Int(rate)) Hz")
+        var restarted = false
+        for _ in 0..<3 {
+            do {
+                try session.setActive(false, options: [])
+                restarted = true
+                break
+            } catch {
+                try? await Task.sleep(nanoseconds: 150_000_000)
+            }
+        }
+        if !restarted { PlaybackLog.warning("USB route: could not stop the audio session (I/O still running)") }
+        try? session.setPreferredSampleRate(rate)
+        do {
+            try session.setActive(true)
+        } catch {
+            PlaybackLog.warning("USB route: audio session did not restart: \(error)")
+            isActive = false
+            return
+        }
+        if await waitForSessionRate(rate, tries: 20) {
+            rateCache.recordAccepted(route: route, rate: rate)
+            PlaybackLog.info("USB route: now at \(Int(session.sampleRate)) Hz")
+        } else if restarted {
+            rateCache.recordRefused(route: route, rate: rate)
+            PlaybackLog.warning("USB route: \(Int(rate)) Hz not taken by \(route) after a restart; session at \(Int(session.sampleRate)) Hz, so iOS converts")
+        }
+        AudioOutputStatus.shared.refreshFromAudioSession(session)
+    }
+
+    private func waitForSessionRate(_ rate: Double, tries: Int) async -> Bool {
+        for _ in 0..<tries {
+            if abs(session.sampleRate - rate) < 1 { return true }
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            if Task.isCancelled { return false }
+        }
+        return abs(session.sampleRate - rate) < 1
     }
 
     /// The rate is only a preference: read back what the session runs at, so a shared log shows
