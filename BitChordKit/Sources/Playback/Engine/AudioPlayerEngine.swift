@@ -157,6 +157,9 @@ public final class AudioPlayerEngine {
         set {
             guard newValue != storedBitPerfectMode else { return }
             storedBitPerfectMode = newValue
+            #if os(iOS)
+            audioSession?.matchesWiredRates = newValue
+            #endif
             audioProcessingDidChange()
         }
     }

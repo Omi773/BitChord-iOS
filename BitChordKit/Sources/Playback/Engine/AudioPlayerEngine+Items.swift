@@ -58,6 +58,7 @@ extension AudioPlayerEngine {
                 #if os(iOS)
                 // Rate first, then play: on a USB DAC the session's rate is the DAC's, and asking
                 // once the deck plays would re-clock it under the track's opening.
+                self.audioSession?.matchesWiredRates = self.bitPerfectMode
                 self.audioSession?.trackSampleRate = entry.trackFormat.sampleRate
                 // Bit-perfect: the deck is empty and silent here, so the session can be restarted
                 // for a DAC that kept its old clock while the last track played.
@@ -270,6 +271,7 @@ extension AudioPlayerEngine {
         if entry.content == .dolbyAtmos { audioSession?.allowMultichannelContent() }
         // Gapless and crossfade advances ask here, as nothing runs before them; after `openItem`,
         // which asked before play, it is the same rate and a no-op.
+        audioSession?.matchesWiredRates = bitPerfectMode
         audioSession?.trackSampleRate = entry.trackFormat.sampleRate
         // A gapless advance reaches here with the deck playing on the old clock: in bit-perfect
         // mode pause for the moment the DAC needs to re-clock, then carry on.

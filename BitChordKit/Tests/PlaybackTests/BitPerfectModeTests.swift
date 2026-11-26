@@ -29,3 +29,22 @@ final class RateSupportCacheTests: XCTestCase {
         XCTAssertTrue(cache.isRefused(route: "USB", rate: 44_100))
     }
 }
+
+/// A Lightning DAC reaches iOS as "Wired headphones", so bit-perfect mode asks for the track's rate
+/// on a wired route too; everything else keeps the USB-only rule.
+final class WiredRateMatchingTests: XCTestCase {
+    func testAWiredRouteIsLeftAloneUnlessBitPerfectAsksForIt() {
+        XCTAssertNil(PreferredSampleRatePolicy.preferredSampleRate(outputs: [.wired], trackSampleRate: 96_000))
+        XCTAssertEqual(PreferredSampleRatePolicy.preferredSampleRate(outputs: [.wired], trackSampleRate: 96_000, matchWired: true), 96_000)
+    }
+
+    func testUsbStillAsksWithoutTheWiredSetting() {
+        XCTAssertEqual(PreferredSampleRatePolicy.preferredSampleRate(outputs: [.usb], trackSampleRate: 48_000), 48_000)
+    }
+
+    func testOtherRoutesNeverAskEvenInBitPerfectMode() {
+        XCTAssertNil(PreferredSampleRatePolicy.preferredSampleRate(outputs: [.bluetooth], trackSampleRate: 96_000, matchWired: true))
+        XCTAssertNil(PreferredSampleRatePolicy.preferredSampleRate(outputs: [.phone], trackSampleRate: 96_000, matchWired: true))
+        XCTAssertNil(PreferredSampleRatePolicy.preferredSampleRate(outputs: [.wired], trackSampleRate: nil, matchWired: true))
+    }
+}

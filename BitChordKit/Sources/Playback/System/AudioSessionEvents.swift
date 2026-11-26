@@ -23,9 +23,14 @@ public enum AudioSessionEvent: Hashable, Sendable {
 /// 48 kHz — the iOS counterpart of the Android service pointing its output at the USB device.
 /// Every other route (the speaker, Bluetooth, AirPlay) resamples internally whatever is asked, so
 /// there the engine leaves the system's choice alone.
+///
+/// Many Lightning DACs reach iOS as "Wired headphones" (port type `headphones`), not as USB audio,
+/// so bit-perfect mode also asks on a wired route (`matchWired`). A wired output that cannot change
+/// clocks simply stays where it is, and the rate is then remembered as not taken.
 enum PreferredSampleRatePolicy {
-    static func preferredSampleRate(outputs: [AudioRouting.Kind], trackSampleRate: Double?) -> Double? {
-        guard outputs.contains(.usb), let rate = trackSampleRate, rate >= 8_000 else { return nil }
+    static func preferredSampleRate(outputs: [AudioRouting.Kind], trackSampleRate: Double?, matchWired: Bool = false) -> Double? {
+        guard outputs.contains(.usb) || (matchWired && outputs.contains(.wired)),
+              let rate = trackSampleRate, rate >= 8_000 else { return nil }
         return rate
     }
 }
@@ -64,12 +69,19 @@ protocol AudioSessionControlling: AnyObject {
     func mediaServicesWereReset()
     /// True while a USB route has been asked for the track's rate and still runs at another one.
     var trackRateIsPending: Bool { get }
+    /// Bit-perfect mode: a wired route (a Lightning DAC iOS calls "Wired headphones") is asked for
+    /// the track's rate too, not only a USB route.
+    var matchesWiredRates: Bool { get set }
     /// Brings the hardware to the track's rate. A DAC keeps the clock it started with while audio
     /// runs, so with nothing playing this may restart the session to make it re-clock.
     func settleTrackSampleRate() async
 }
 
 extension AudioSessionControlling {
+    var matchesWiredRates: Bool {
+        get { false }
+        set {}
+    }
     var trackRateIsPending: Bool { false }
     func settleTrackSampleRate() async {}
 }
@@ -90,6 +102,13 @@ final class AudioSessionController {
     private var originalPreferredSampleRate: Double?
     private var rateCache = RateSupportCache()
     private var settleTask: Task<Void, Never>?
+
+    var matchesWiredRates = false {
+        didSet {
+            guard matchesWiredRates != oldValue else { return }
+            applyPreferredSampleRate()
+        }
+    }
 
     /// The sample rate of the track playing now. On a USB route the session is asked for it.
     var trackSampleRate: Double? {
@@ -122,7 +141,7 @@ final class AudioSessionController {
             isActive = true
             // A USB rate asked for while inactive only lands now.
             let outputs = currentOutputs()
-            if let rate = PreferredSampleRatePolicy.preferredSampleRate(outputs: outputs, trackSampleRate: trackSampleRate) {
+            if let rate = PreferredSampleRatePolicy.preferredSampleRate(outputs: outputs, trackSampleRate: trackSampleRate, matchWired: matchesWiredRates) {
                 logSampleRateReadBack(requested: rate, on: outputs)
                 verifySettledRate(rate, on: outputs)
             }
@@ -152,7 +171,7 @@ final class AudioSessionController {
 
     private func applyPreferredSampleRate() {
         let outputs = currentOutputs()
-        if let rate = PreferredSampleRatePolicy.preferredSampleRate(outputs: outputs, trackSampleRate: trackSampleRate) {
+        if let rate = PreferredSampleRatePolicy.preferredSampleRate(outputs: outputs, trackSampleRate: trackSampleRate, matchWired: matchesWiredRates) {
             guard session.preferredSampleRate != rate else { return }
             let route = outputs.map(\.routeName).joined(separator: "+")
             if rateCache.isRefused(route: route, rate: rate) {
@@ -205,7 +224,7 @@ final class AudioSessionController {
     var trackRateIsPending: Bool {
         let outputs = currentOutputs()
         guard isActive,
-              let rate = PreferredSampleRatePolicy.preferredSampleRate(outputs: outputs, trackSampleRate: trackSampleRate)
+              let rate = PreferredSampleRatePolicy.preferredSampleRate(outputs: outputs, trackSampleRate: trackSampleRate, matchWired: matchesWiredRates)
         else { return false }
         let route = outputs.map(\.routeName).joined(separator: "+")
         return abs(session.sampleRate - rate) >= 1 && !rateCache.isRefused(route: route, rate: rate)
@@ -218,7 +237,7 @@ final class AudioSessionController {
     func settleTrackSampleRate() async {
         guard isActive else { return }
         let outputs = currentOutputs()
-        guard let rate = PreferredSampleRatePolicy.preferredSampleRate(outputs: outputs, trackSampleRate: trackSampleRate),
+        guard let rate = PreferredSampleRatePolicy.preferredSampleRate(outputs: outputs, trackSampleRate: trackSampleRate, matchWired: matchesWiredRates),
               abs(session.sampleRate - rate) >= 1 else { return }
         let route = outputs.map(\.routeName).joined(separator: "+")
         guard !rateCache.isRefused(route: route, rate: rate) else { return }
