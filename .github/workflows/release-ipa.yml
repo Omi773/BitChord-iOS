@@ -7,6 +7,9 @@
 #
 # Order: 1) Actions -> Apply update (it starts Build IPA)  2) wait for Build IPA to succeed
 #        3) Actions -> Release IPA -> Run workflow.
+# It also creates and updates source.json in the repo root: the SideStore / AltStore source. Add
+# https://raw.githubusercontent.com/<owner>/<repo>/<default branch>/source.json to SideStore once and
+# every release shows up there as an update.
 # The version is read from the IPA itself, so there is nothing to type. The release notes come from
 # docs/release-<version>.md in the repo (docs/release-0.1.1.md for version 0.1.1), so write that
 # file before releasing a new version.
@@ -99,3 +102,104 @@ jobs:
             gh release create "v$VERSION" "$IPA" --title "BitChord $VERSION" --notes-file notes.md --target "${{ github.sha }}" $FLAGS
           fi
           gh release view "v$VERSION" --json url --jq .url
+
+      # ---- SideStore / AltStore source ----
+      # source.json is created on the first release and gets one new entry per version after that
+      # (newest first). The size and checksum are those of the IPA attached to the release.
+      - name: Update the SideStore source
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import datetime, hashlib, json, os, pathlib, re
+
+          repo = os.environ["GITHUB_REPOSITORY"]
+          branch = os.environ["DEFAULT_BRANCH"]
+          version = os.environ["VERSION"]
+          build = os.environ["BUILD"]
+          raw = f"https://raw.githubusercontent.com/{repo}/{branch}"
+          ipa = pathlib.Path(f"release/BitChord-{version}-unsigned.ipa")
+
+          # What's new: the "## What's new" section of the release notes, as plain text.
+          notes = ""
+          doc = pathlib.Path(f"docs/release-{version}.md")
+          if doc.exists():
+              m = re.search(r"^## What's new[^\n]*\n(.*?)(?=^## |\Z)", doc.read_text(), re.S | re.M)
+              if m:
+                  lines = []
+                  for line in m.group(1).splitlines():
+                      line = line.strip()
+                      if not line:
+                          continue
+                      if line.startswith("### "):
+                          line = line[4:] + ":"
+                      elif line.startswith("- "):
+                          line = "\u2022 " + line[2:]
+                      line = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", line).replace("**", "").replace("`", "")
+                      lines.append(line)
+                  notes = "\n".join(lines)
+          if not notes:
+              notes = f"BitChord {version}. See the release notes on GitHub."
+
+          entry = {
+              "version": version,
+              "buildVersion": build,
+              "date": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d"),
+              "localizedDescription": notes[:1500],
+              "downloadURL": f"https://github.com/{repo}/releases/download/v{version}/{ipa.name}",
+              "size": ipa.stat().st_size,
+              "sha256": hashlib.sha256(ipa.read_bytes()).hexdigest(),
+              "minOSVersion": "17.0",
+          }
+
+          path = pathlib.Path("source.json")
+          if path.exists():
+              source = json.loads(path.read_text())
+          else:
+              source = {
+                  "name": "BitChord",
+                  "identifier": "com.music.bitchord.source",
+                  "subtitle": "BitChord for iOS",
+                  "description": "Unofficial YouTube Music client for iPhone and iPad. Updates for BitChord, straight from its GitHub releases.",
+                  "iconURL": f"{raw}/.github/assets/icon.png",
+                  "website": f"https://github.com/{repo}",
+                  "tintColor": "e5404f",
+                  "apps": [{
+                      "name": "BitChord",
+                      "bundleIdentifier": "com.music.bitchord",
+                      "developerName": "Omi Shikder",
+                      "subtitle": "YouTube Music client",
+                      "localizedDescription": "A native YouTube Music client for iPhone and iPad, ported from BitChord for Android. Unofficial: not affiliated with YouTube, Google or Apple.",
+                      "iconURL": f"{raw}/.github/assets/icon.png",
+                      "tintColor": "e5404f",
+                      "category": "entertainment",
+                      "screenshots": [],
+                      "appPermissions": {
+                          "entitlements": [],
+                          "privacy": {
+                              "NSAppleMusicUsageDescription": "BitChord plays music from your library.",
+                              "NSLocalNetworkUsageDescription": "BitChord connects to SMB and WebDAV servers and Listen Together parties on your local network.",
+                              "NSPhotoLibraryAddUsageDescription": "BitChord saves your Replay poster to Photos.",
+                          },
+                      },
+                      "versions": [],
+                  }],
+                  "news": [],
+              }
+
+          app = source["apps"][0]
+          app["versions"] = [entry] + [v for v in app.get("versions", []) if v.get("version") != version]
+          path.write_text(json.dumps(source, indent=2, ensure_ascii=False) + "\n")
+          print(f"source.json now lists {[v['version'] for v in app['versions']]}")
+          print(f"Source URL: {raw}/source.json")
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add source.json
+          if git diff --cached --quiet; then
+            echo "source.json is already up to date"
+          else
+            git commit -m "Update SideStore source for $VERSION"
+            git push
+          fi
