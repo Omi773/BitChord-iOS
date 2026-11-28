@@ -32,8 +32,8 @@
           "date": "2026-11-28",
           "localizedDescription": "Added:\n• Animated artwork now plays offline. BitChord saves a song's animated artwork on your phone the first time it plays, so it still plays with no connection, on the Now Playing screen and on the lock screen. The animated artwork you play least is deleted first to free space.",
           "downloadURL": "https://github.com/Omi773/BitChord-iOS/releases/download/v0.1.2/BitChord-0.1.2-unsigned.ipa",
-          "size": 55133425,
-          "sha256": "57051b01837635bb29ea5b4483c388cb24a01fcdd3d2607ffeaef15717ccd404",
+          "size": 55132119,
+          "sha256": "4048bffc5f0f08bf496e27338416851351569ad036fd43b46d22dbd244ad6279",
           "minOSVersion": "17.0"
         },
         {
