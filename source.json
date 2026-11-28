@@ -27,6 +27,16 @@
       },
       "versions": [
         {
+          "version": "0.1.3",
+          "buildVersion": "2",
+          "date": "2026-11-28",
+          "localizedDescription": "Added:\n• BitChord-iOS finally hit the files app. BitChord now has its own folder in the Files app: Files > On My iPhone > BitChord.\n• Music folder. Downloaded songs are saved in BitChord > Music. Songs you downloaded before this version move there on their own the first time you open the app.\n• AnimatedArt folder. Animated artwork is saved in BitChord > AnimatedArt, with a folder for each album, and still plays offline.\n• Diagnostics folder. The diagnostic log is saved in BitChord > Diagnostics. It is written while \"Keep diagnostic log\" is on in Settings.\nChanged:\n• Animated artwork is no longer cleared when BitChord updates.\n• Animated artwork saved by 0.1.2 is not carried over. It downloads again the next time its song plays.",
+          "downloadURL": "https://github.com/Omi773/BitChord-iOS/releases/download/v0.1.3/BitChord-0.1.3-unsigned.ipa",
+          "size": 55143715,
+          "sha256": "e24a38abff1cb39dd7a749ccbb83ea2da3757971abae770b146f93f0ff463d8f",
+          "minOSVersion": "17.0"
+        },
+        {
           "version": "0.1.2",
           "buildVersion": "2",
           "date": "2026-11-28",
