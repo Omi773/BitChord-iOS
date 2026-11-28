@@ -1231,6 +1231,14 @@ extension PlayerController: AudioPlayerEngineDelegate {
     /// Lock screen, Control Center, AirPods, CarPlay. Next/previous go through the queue; the heart
     /// rates the track; transport is held while a Listen Together host has control.
     func handleRemoteCommand(_ command: RemoteCommand) -> RemoteCommandResult {
+        // A play tap that woke the app from the background can land before the last session's
+        // queue is back: bring it back first, so the tap plays instead of being refused.
+        if currentSong == nil {
+            switch command {
+            case .play, .togglePlayPause: _ = restore()
+            default: break
+            }
+        }
         guard currentSong != nil else { return .noActionableNowPlayingItem }
         switch command {
         case .nextTrack:

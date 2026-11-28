@@ -10,6 +10,9 @@ struct BitChordWidgetBundle: WidgetBundle {
         NowPlayingSquareWidget()
         NowPlayingWideWidget()
         NowPlayingPillWidget()
+        if #available(iOS 18.0, *) {
+            PlayPauseControl()
+        }
     }
 }
 
