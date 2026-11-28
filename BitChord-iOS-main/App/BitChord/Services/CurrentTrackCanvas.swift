@@ -208,6 +208,23 @@ final class CurrentTrackCanvas {
                 publish([main, tall].compactMap { $0 })
                 published = true
             }
+        } else if let main, Self.isSquare(main.pixels) {
+            // The source has only a square clip (this canvas service does): crop its centre 3:4
+            // column so the full-screen lock art still moves.
+            if let tallFile = await TallClipMaker.makeTall(from: main.fileURL),
+               let size = await videoSize(tallFile), size.width > 0, size.height > 0 {
+                guard stillWanted(tag) else { return }
+                let tall = NowPlayingAnimatedArtwork(
+                    fileURL: tallFile,
+                    pixels: size,
+                    artworkID: Self.artworkID(for: tallFile, still: song.thumbnailUrl),
+                    itemID: tag.itemID)
+                publish([main, tall])
+                published = true
+                tallNote = "\(Int(size.width))x\(Int(size.height)) cropped from the square clip"
+            } else {
+                tallNote = "could not crop the square clip"
+            }
         }
         diagnostic.decision = "clip \(mainNote) · 3x4: \(tallNote)"
             + (published ? " · handed to the engine" : ": skipped")
@@ -260,6 +277,11 @@ final class CurrentTrackCanvas {
         if !isPhone { return "iPad" }
         if !offers3x4 { return "not offered" }
         return nil
+    }
+
+    /// Within a few percent of 1:1, the shape of a 1x1 clip.
+    static func isSquare(_ size: CGSize) -> Bool {
+        size.width > 0 && size.height > 0 && abs(size.width / size.height - 1) < 0.05
     }
 
     static func systemTallSkip() -> String? {

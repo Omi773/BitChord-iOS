@@ -140,6 +140,8 @@ struct LocalSongRow: View {
     let song: Song
     var trackNumber: Int?
     var selected = false
+    /// Some row is selected: every row shows its tick circle on the left, as in the Files app.
+    var selecting = false
     var isCurrent = false
     var isPlaying = false
     var isDownloaded = false
@@ -152,6 +154,13 @@ struct LocalSongRow: View {
 
     var body: some View {
         HStack(spacing: 14) {
+            if selecting {
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 22))
+                    .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+                    .transition(.move(edge: .leading).combined(with: .opacity))
+                    .accessibilityHidden(true)
+            }
             leading
             VStack(alignment: .leading, spacing: 2) {
                 ExplicitSongTitle(song: song, font: .callout.weight(.semibold), color: isCurrent ? .accentColor : .primary)
@@ -167,8 +176,9 @@ struct LocalSongRow: View {
         .padding(.vertical, 4)
         .background((isCurrent || selected) ? Color.accentColor.opacity(0.14) : .clear)
         .animation(.easeOut(duration: 0.2), value: selected)
+        .animation(.snappy(duration: 0.25), value: selecting)
         .modifier(TapAndHold(onTap: onTap, onHold: onHold))
-        .modifier(SwipeToQueue(enabled: true, playNext: settings.swipeToPlayNext, action: onSwipe))
+        .modifier(SwipeToQueue(enabled: !selecting, playNext: settings.swipeToPlayNext, action: onSwipe))
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction(named: Text(L10n.more), onMore)
@@ -210,7 +220,7 @@ struct LocalSongRow: View {
                 .foregroundStyle(Color.accentColor)
                 .accessibilityLabel(L10n.downloaded)
         }
-        if selected {
+        if selected, !selecting {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 18))
                 .foregroundStyle(Color.accentColor)

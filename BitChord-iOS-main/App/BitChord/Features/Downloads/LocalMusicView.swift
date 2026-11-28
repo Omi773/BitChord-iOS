@@ -24,6 +24,10 @@ struct LocalMusicView: View {
     var isLoading = false
     /// Deletes the rows selected in the Downloads folder.
     var onDelete: (([Song]) -> Void)?
+    /// Local Music's delete asks first: it removes files from the listener's own folder.
+    @State private var pendingDelete: [Song]?
+    /// Where the rows are on screen, for the two-finger drag.
+    @State private var rowFrames = RowFrameBox()
     /// Copies the selected rows to WebDAV; nil (no server) hides the action.
     var onUpload: (([Song]) -> Void)?
     var isDownloaded: (String) -> Bool = { _ in false }
@@ -87,6 +91,19 @@ struct LocalMusicView: View {
         }
         .animation(.snappy(duration: 0.25), value: state.isSelecting)
         .background(Color(.systemBackground))
+        .confirmationDialog(
+            "Delete \(pendingDelete?.count ?? 0) song(s) from the folder?",
+            isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let chosen = pendingDelete { onDelete?(chosen) }
+                pendingDelete = nil
+            }
+            Button("Cancel", role: .cancel) { pendingDelete = nil }
+        } message: {
+            Text("The files are removed from the folder on your device too.")
+        }
         #if DEBUG
         .task(id: songs.count) { applyDebugTargets(listing) }
         #endif
@@ -237,7 +254,9 @@ struct LocalMusicView: View {
             }
             Button(role: .destructive) {
                 let chosen = state.takeSelection(from: songs)
-                onDelete?(chosen)
+                // Downloads are the app's own copies; a Local Music track is a file in the
+                // listener's folder, so that one asks first.
+                if state.isDownloads { onDelete?(chosen) } else { pendingDelete = chosen }
             } label: {
                 Label(L10n.delete, systemImage: "trash")
                     .font(.subheadline.weight(.semibold))
@@ -323,6 +342,12 @@ struct LocalMusicView: View {
             }
         }
         .scrollDismissesKeyboard(.immediately)
+        .trackingRowFrames(in: rowFrames)
+        .background(TwoFingerSelect(
+            frames: rowFrames,
+            ids: { rows.map(\.videoId) },
+            current: { state.selectedIds },
+            apply: { state.replaceSelection($0) }))
         .accessibilityIdentifier("downloads.songs")
     }
 
@@ -437,6 +462,7 @@ struct LocalMusicView: View {
             song: song,
             trackNumber: number,
             selected: state.isSelected(song),
+            selecting: state.isSelecting,
             isCurrent: current,
             isPlaying: current && player.isPlaying,
             isDownloaded: isDownloaded(song.videoId),
@@ -446,6 +472,7 @@ struct LocalMusicView: View {
             onMore: { router.present(.songActions(song)) },
             onSwipe: { _ = player.queueFromSwipe(song) }
         )
+        .reportsRowFrame(id: song.videoId)
     }
 
     private func songCard(_ song: Song, in list: [Song], at index: Int, fromDrillDown: Bool) -> some View {

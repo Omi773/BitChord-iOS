@@ -72,7 +72,7 @@ final class LocalMusicState {
     }
 
     /// The selection bar replaces the search field while anything is selected.
-    var isSelecting: Bool { isDownloads && !selectedIds.isEmpty }
+    var isSelecting: Bool { !selectedIds.isEmpty }
     var inDrillDown: Bool { drillDown != nil }
 
     /// A tab tap: switches, and always leaves a drill-down.
@@ -141,7 +141,6 @@ final class LocalMusicState {
     /// back on Songs out of any drill-down); elsewhere the caller opens the song menu. Returns true
     /// when the hold was taken as selection.
     func hold(_ song: Song, fromDrillDown: Bool) -> Bool {
-        guard isDownloads else { return false }
         selectedIds.insert(song.videoId)
         if !fromDrillDown {
             tab = .songs
@@ -162,7 +161,6 @@ final class LocalMusicState {
     /// An album card held: selects every one of its tracks in the Downloads folder. False elsewhere,
     /// where the caller opens the album menu.
     func hold(_ album: LocalAlbumGroup) -> Bool {
-        guard isDownloads else { return false }
         selectedIds.formUnion(album.songs.map(\.videoId))
         selectedAlbumKeys.insert(album.key)
         return true
@@ -175,6 +173,12 @@ final class LocalMusicState {
     }
 
     // MARK: - Selection bar
+
+    /// Replaces the selection, for the two-finger drag.
+    func replaceSelection(_ ids: Set<String>) {
+        selectedIds = ids
+        if ids.isEmpty { selectedAlbumKeys = [] }
+    }
 
     func allSelected(of songs: [Song]) -> Bool {
         !songs.isEmpty && songs.allSatisfy { selectedIds.contains($0.videoId) }

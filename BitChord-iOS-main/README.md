@@ -57,7 +57,7 @@ Where iOS cannot do what Android does, the port uses the closest iOS equivalent 
 
 - Sign in with a Google account for your YouTube Music library, playlists and history. You can add several accounts and switch between personal and brand profiles.
 - Download tracks for offline play, with metadata and lyrics written into the file.
-- Play your own music from a folder you pick once: BitChord watches it and keeps the library in step as files are added, changed or removed. Lyrics (embedded, or a .lrc beside the file) and animated artwork work for these tracks too.
+- Play your own music from a folder you pick once: BitChord watches it and keeps the library in step as files are added, changed or removed. Lyrics (embedded, or a .lrc beside the file) and animated artwork work for these tracks too. Select songs the way the Files app does (tick circles on the left, two-finger drag to select a run) and delete them from the folder. Where a canvas source only has a square clip, the lock screen gets a 3:4 crop of it.
 - Play music from SMB and WebDAV shares on your network.
 - Export and import settings and listening history as a JSON file.
 

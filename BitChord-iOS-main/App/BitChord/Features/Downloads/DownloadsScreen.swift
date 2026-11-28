@@ -37,7 +37,9 @@ struct DownloadsScreen: View {
             isDownloads: isDownloads,
             emptyMessage: folder.emptyMessage,
             isLoading: !loaded,
-            onDelete: isDownloads ? { chosen in service.delete(chosen.map(\.videoId)) } : nil,
+            onDelete: isDownloads
+                ? { chosen in service.delete(chosen.map(\.videoId)) }
+                : { chosen in Task { await model.localFolderSync.deleteFromFolder(chosen.map(\.videoId)) } },
             onUpload: isDownloads && service.canUploadToWebDAV ? { chosen in Task { await context.upload(chosen) } } : nil,
             isDownloaded: { service.isDownloaded($0) }
         )

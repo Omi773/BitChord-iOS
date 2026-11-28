@@ -133,6 +133,56 @@ public final class LocalFolderSync {
         return total
     }
 
+    /// Deletes the tracks' files from the Local Music folder itself, then their copies in the
+    /// library. Returns the ids that are gone. A file the folder won't let go of (read-only, a
+    /// provider that is offline) keeps its track, so the list never shows a song as deleted while
+    /// the file is still there.
+    @discardableResult
+    public func deleteFromFolder(_ videoIds: [String]) async -> Set<String> {
+        // Not in the middle of a pass: one that listed the file before it went would import it back.
+        while running { try? await Task.sleep(for: .milliseconds(100)) }
+        running = true
+        defer { running = false }
+
+        let wanted = Set(videoIds)
+        var gone = Set<String>()
+        let folder = LocalMusicFolder.resolve()
+        let scoped = folder?.startAccessingSecurityScopedResource() ?? false
+        defer { if scoped { folder?.stopAccessingSecurityScopedResource() } }
+        let manager = FileManager.default
+
+        for id in wanted {
+            let sources = manifest.files.filter { $0.value.videoId == id }.map(\.key)
+            guard let folder, !sources.isEmpty else {
+                // Not from the folder (an earlier hand-picked import): only the copy exists.
+                gone.insert(id)
+                continue
+            }
+            var removedAll = true
+            for relative in sources {
+                let file = folder.appendingPathComponent(relative)
+                guard manager.fileExists(atPath: file.path(percentEncoded: false)) else { continue }
+                do {
+                    try manager.removeItem(at: file)
+                    // The lyrics file that sat beside it goes with it.
+                    try? manager.removeItem(at: file.deletingPathExtension().appendingPathExtension("lrc"))
+                } catch {
+                    DebugLog.w("Downloads", "could not delete \(relative) from the folder", error: error)
+                    removedAll = false
+                }
+            }
+            if removedAll { gone.insert(id) }
+        }
+
+        for id in gone {
+            for (path, entry) in manifest.files where entry.videoId == id { manifest.files[path] = nil }
+        }
+        removeTracks(gone)
+        library.flush()
+        persist()
+        return gone
+    }
+
     private func runPass() async -> LocalFolderSyncReport {
         var report = LocalFolderSyncReport()
         guard let folder = LocalMusicFolder.resolve() else { return report }
