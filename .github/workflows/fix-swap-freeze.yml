@@ -1,0 +1,98 @@
+# Fixes the freeze when the lossless copy is swapped in: patches AudioPlayerEngine+Swap.swift,
+# commits it, and starts "Build IPA". Run it from the Actions tab: Fix swap freeze -> Run workflow.
+name: Fix swap freeze
+
+on:
+  workflow_dispatch:
+    inputs:
+      build:
+        description: Start "Build IPA" afterwards
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Patch the swap loop
+        run: |
+          python3 - <<'PYEOF'
+          p = 'BitChordKit/Sources/Playback/Engine/AudioPlayerEngine+Swap.swift'
+          s = open(p).read()
+          if 'swapMaxRecues' in s:
+              print('Already patched'); raise SystemExit(0)
+
+          def sub(old, new):
+              global s
+              assert old in s, 'Could not find expected code:\n' + old
+              s = s.replace(old, new, 1)
+
+          sub('''    static let swapDeadline: Duration = .seconds(8)
+          ''', '''    static let swapDeadline: Duration = .seconds(8)
+              /// How many times the playhead may overtake the cue before the swap gives up and cuts over.
+              /// Each re-cue is a zero-tolerance seek on the main thread; on a lossless copy still being
+              /// fetched through the cache loader, repeating them is what froze the UI.
+              static let swapMaxRecues = 2
+          ''')
+          sub('''        var lead = Self.swapLead
+                  var cue: TimeInterval?
+                  while ContinuousClock.now < deadline {
+                      guard !Task.isCancelled, currentItem?.id == replacing, deck === standby else { return false }
+          ''', '''        var lead = Self.swapLead
+                  var cue: TimeInterval?
+                  var recues = 0
+                  // Seat the copy on the deck once, with no seek: seeking an item that hasn't opened yet
+                  // blocks the main thread on the cache loader.
+                  if deck.current !== entry {
+                      deck.setCurrent(entry, at: 0)
+                      deck.pause()
+                      deck.volume = 0
+                      deck.rate = rate
+                  }
+                  while ContinuousClock.now < deadline {
+                      guard !Task.isCancelled, currentItem?.id == replacing, deck === standby else { return false }
+                      // Not open yet: wait for it without touching the deck.
+                      if entry.playerItem.status != .readyToPlay {
+                          if entry.playerItem.status == .failed || deck.isIdle { return false }
+                          guard (try? await Task.sleep(for: .milliseconds(25))) != nil else { return false }
+                          continue
+                      }
+          ''')
+          sub('''                    // The playhead got there first: cue further ahead.
+                              lead = min(lead * 2, 6)
+          ''', '''                    // The playhead got there first: cue further ahead, a bounded number of times.
+                              recues += 1
+                              if recues > Self.swapMaxRecues { return false }
+                              lead = min(lead * 2, 6)
+          ''')
+          sub('''                if deck.current === entry { deck.seek(to: next) } else { deck.setCurrent(entry, at: next) }
+                          deck.preroll()''', '''                deck.seek(to: next)
+                          deck.preroll()''')
+          open(p, 'w').write(s)
+          print('Patched')
+          PYEOF
+
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Nothing changed"
+          else
+            git commit -m "Fix freeze when the lossless copy is swapped in"
+            git push
+          fi
+
+      - name: Start the IPA build
+        if: inputs.build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run build-ipa.yml --ref "${{ github.ref_name }}"
