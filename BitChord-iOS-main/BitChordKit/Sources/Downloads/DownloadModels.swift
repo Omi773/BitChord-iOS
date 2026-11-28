@@ -150,6 +150,12 @@ public struct SavedTrackRecord: Codable, Hashable, Sendable {
     /// Stable creation time, so "Date added" survives a retag.
     public var dateAddedSeconds: Int64?
     public var origin: LocalTrackOrigin
+    /// Whether the catalogue marks the track explicit (Apple Music's, once matched).
+    public var isExplicit: Bool?
+    /// Apple Music's credit details, once the track was matched against its catalogue.
+    public var credits: SongCredits?
+    /// Apple Music has been asked about this track (matched or not), so it isn't asked again.
+    public var metadataChecked: Bool?
 
     public init(
         videoId: String,
@@ -162,8 +168,14 @@ public struct SavedTrackRecord: Codable, Hashable, Sendable {
         path: String,
         downloadFormat: String? = nil,
         dateAddedSeconds: Int64? = nil,
-        origin: LocalTrackOrigin = .download
+        origin: LocalTrackOrigin = .download,
+        isExplicit: Bool? = nil,
+        credits: SongCredits? = nil,
+        metadataChecked: Bool? = nil
     ) {
+        self.isExplicit = isExplicit
+        self.credits = credits
+        self.metadataChecked = metadataChecked
         self.videoId = videoId
         self.title = title
         self.artist = artist
@@ -179,7 +191,7 @@ public struct SavedTrackRecord: Codable, Hashable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case videoId, title, artist, thumbnailUrl, artworkPath, durationText, albumName, path
-        case downloadFormat, dateAddedSeconds, origin
+        case downloadFormat, dateAddedSeconds, origin, isExplicit, credits, metadataChecked
     }
 
     /// Lenient: fields added after the fact (album, date added, origin) decode as absent, so a
@@ -197,6 +209,9 @@ public struct SavedTrackRecord: Codable, Hashable, Sendable {
         downloadFormat = try c.decodeIfPresent(String.self, forKey: .downloadFormat)
         dateAddedSeconds = try c.decodeIfPresent(Int64.self, forKey: .dateAddedSeconds)
         origin = (try? c.decodeIfPresent(LocalTrackOrigin.self, forKey: .origin)) ?? .download
+        isExplicit = try? c.decodeIfPresent(Bool.self, forKey: .isExplicit)
+        credits = try? c.decodeIfPresent(SongCredits.self, forKey: .credits)
+        metadataChecked = try? c.decodeIfPresent(Bool.self, forKey: .metadataChecked)
     }
 }
 
@@ -219,6 +234,52 @@ public struct DownloadLyrics: Hashable, Sendable {
 /// Supplies the lyrics to embed in a download. The Lyrics module is wired in by the app; it gets the
 /// track and returns LRC text (or nil for none). May throw — a failure costs the lyrics, never the
 /// download.
+/// Looks a track up in Apple Music's catalogue: the same song with Apple's title, artist, album,
+/// cover, explicit flag and credits, or nil when there is no match (or Apple can't be asked). The
+/// Canvas module does the asking; the app passes it in, as it does the lyrics.
+public typealias DownloadMetadataProvider = @Sendable (Song) async -> Song?
+
+/// The tags beyond title, artist, album, lyrics and cover that a download carries when Apple Music
+/// knew the song: genre, release date, writers, ISRC, label, copyright and the explicit flag.
+public struct DownloadTagExtras: Hashable, Sendable {
+    public var genre: String?
+    public var releaseDate: String?
+    public var composers: String?
+    public var isrc: String?
+    public var recordLabel: String?
+    public var copyright: String?
+    public var isExplicit: Bool
+
+    public init(genre: String? = nil, releaseDate: String? = nil, composers: String? = nil, isrc: String? = nil,
+                recordLabel: String? = nil, copyright: String? = nil, isExplicit: Bool = false) {
+        self.genre = genre
+        self.releaseDate = releaseDate
+        self.composers = composers
+        self.isrc = isrc
+        self.recordLabel = recordLabel
+        self.copyright = copyright
+        self.isExplicit = isExplicit
+    }
+
+    public static let none = DownloadTagExtras()
+
+    /// What `song` carries once Apple Music has matched it.
+    public init(song: Song) {
+        let credits = song.credits
+        func clean(_ value: String?) -> String? {
+            guard let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            return value
+        }
+        self.init(genre: clean(credits?.genres.joined(separator: ", ")),
+                  releaseDate: clean(credits?.releaseDate),
+                  composers: clean(credits?.composers),
+                  isrc: clean(credits?.isrc),
+                  recordLabel: clean(credits?.recordLabel),
+                  copyright: clean(credits?.copyright),
+                  isExplicit: song.isExplicit == true)
+    }
+}
+
 public typealias DownloadLyricsProvider = @Sendable (Song) async throws -> DownloadLyrics?
 
 /// Told when googlevideo refuses a URL partway through a download (403/404/410), before the queue

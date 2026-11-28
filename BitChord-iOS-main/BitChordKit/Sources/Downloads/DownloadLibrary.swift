@@ -107,7 +107,11 @@ public final class DownloadLibrary {
 
     /// The app's library, in `Application Support/BitChord/Downloads`.
     public static func live() -> DownloadLibrary {
-        DownloadLibrary(store: .applicationSupport())
+        let store = DownloadStore.applicationSupport()
+        // Tracks an earlier build kept in hidden app storage move to the Music folder first, so the
+        // library never opens with records that name files which have not moved yet.
+        store.moveLegacyTracks()
+        return DownloadLibrary(store: store)
     }
 
     // MARK: Asking
@@ -259,7 +263,7 @@ public final class DownloadLibrary {
 
     /// `artwork` is the saved cover's file when it is there.
     private func song(for record: SavedTrackRecord, url: URL, dates: (added: Int64?, modified: Int64?), artwork: URL?) -> Song {
-        Song(
+        var song = Song(
             videoId: record.videoId,
             title: record.title,
             artist: record.artist,
@@ -272,6 +276,10 @@ public final class DownloadLibrary {
             localDateAddedSeconds: dates.added,
             localDateModifiedSeconds: dates.modified
         )
+        // Apple Music's details, when the track was matched: the library shows them too.
+        song.isExplicit = record.isExplicit
+        song.credits = record.credits
+        return song
     }
 
     /// A saved cover's file URL, when the path is set and the file is there.
@@ -313,10 +321,47 @@ public final class DownloadLibrary {
                 path: path,
                 downloadFormat: downloadFormat,
                 dateAddedSeconds: added,
-                origin: .download
+                origin: .download,
+                isExplicit: song.isExplicit,
+                credits: song.credits,
+                metadataChecked: song.credits == nil ? records[song.videoId]?.metadataChecked : true
             )
         }
         persist()
+    }
+
+    /// Apple Music's version of a saved track: its title, artist, album, explicit flag and credits
+    /// replace what the record held, and the track is marked as asked about. The saved cover and
+    /// the file itself are left as they are. `matched` is nil when Apple had no match, which only
+    /// marks the track so it isn't asked again.
+    public func applyMetadata(to videoId: String, matched: Song?) {
+        guard var record = records[videoId] else { return }
+        record.metadataChecked = true
+        if let matched {
+            if !matched.title.isBlank { record.title = matched.title }
+            if !matched.artist.isBlank { record.artist = matched.artist }
+            if let album = matched.albumName, !album.isBlank { record.albumName = album }
+            if record.artworkPath == nil, let cover = matched.thumbnailUrl, !cover.isBlank { record.thumbnailUrl = cover }
+            record.isExplicit = matched.isExplicit
+            record.credits = matched.credits
+        }
+        records[videoId] = record
+        if defersPersist { unsaved = true } else { persist() }
+    }
+
+    /// Saved tracks Apple Music has not been asked about yet, as the rows a lookup needs.
+    public func tracksAwaitingMetadata(limit: Int) -> [Song] {
+        records.values
+            .filter { $0.metadataChecked != true && store.exists(relativePath: $0.path) }
+            .sorted { $0.videoId < $1.videoId }
+            .prefix(limit)
+            .map { record in
+                var song = Song(videoId: record.videoId, title: record.title, artist: record.artist,
+                                thumbnailUrl: record.thumbnailUrl, durationText: record.durationText,
+                                albumName: record.albumName)
+                song.isExplicit = record.isExplicit
+                return song
+            }
     }
 
     /// Record a file copied in from Files.

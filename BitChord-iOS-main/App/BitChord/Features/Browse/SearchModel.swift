@@ -1,4 +1,5 @@
 import BitChordCore
+import Canvas
 import Foundation
 import InnerTube
 
@@ -165,7 +166,10 @@ final class SearchModel {
         Task {
             let outcome: Result<InnerTubeParser.SearchPage, Error>
             do {
-                outcome = .success(try await catalog.searchPage(query: query, filter: filter))
+                let page = try await catalog.searchPage(query: query, filter: filter)
+                // Apple Music's metadata replaces YouTube's; a song Apple doesn't list is dropped.
+                let rows = filter == .videos ? page.rows : await AppleMusicMetadata.shared.enrich(page.rows)
+                outcome = .success(InnerTubeParser.SearchPage(rows: rows, continuation: page.continuation))
             } catch {
                 outcome = .failure(error)
             }
@@ -191,7 +195,14 @@ final class SearchModel {
     func loadMore() async {
         guard let session, let token = session.continuation, !loadingMore, let catalog else { return }
         loadingMore = true
-        let next = try? await catalog.searchContinuation(token: token, filter: session.filter)
+        let fetched = try? await catalog.searchContinuation(token: token, filter: session.filter)
+        let next: InnerTubeParser.SearchPage?
+        if let fetched, session.filter != .videos {
+            let rows = await AppleMusicMetadata.shared.enrich(fetched.rows)
+            next = InnerTubeParser.SearchPage(rows: rows, continuation: fetched.continuation)
+        } else {
+            next = fetched
+        }
         guard self.session == session, session.requestId == newestRequestId else { return }
         if let next {
             let current = results?.value ?? []

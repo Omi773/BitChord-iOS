@@ -102,6 +102,9 @@ public struct Song: Codable, Hashable, Sendable, Identifiable {
     public var playbackSourceType: PlaybackSourceType?
     /// Browse id for an album, playlist or other source page.
     public var playbackSourceId: String?
+    /// Credit details (writers, ISRC, label, release date) from Apple Music; nil until a search
+    /// matched the row there. See `AppleMusicMetadata`.
+    public var credits: SongCredits?
 
     public init(
         videoId: String,
@@ -127,7 +130,8 @@ public struct Song: Codable, Hashable, Sendable, Identifiable {
         isExplicit: Bool? = nil,
         playbackSource: String? = nil,
         playbackSourceType: PlaybackSourceType? = nil,
-        playbackSourceId: String? = nil
+        playbackSourceId: String? = nil,
+        credits: SongCredits? = nil
     ) {
         self.videoId = videoId
         self.title = title
@@ -153,6 +157,7 @@ public struct Song: Codable, Hashable, Sendable, Identifiable {
         self.playbackSource = playbackSource
         self.playbackSourceType = playbackSourceType
         self.playbackSourceId = playbackSourceId
+        self.credits = credits
     }
 
     /// The most specific identity the row has: its queue entry, then its playlist slot, then its
@@ -203,6 +208,7 @@ public struct Song: Codable, Hashable, Sendable, Identifiable {
         case isVideo, isVideoOrigin, setVideoId, queueTier, queueEntryId, radioName, localUri
         case downloadFormat, localPath, localDateAddedSeconds, localDateModifiedSeconds
         case sourceQuality, isExplicit, playbackSource, playbackSourceType, playbackSourceId
+        case credits
         /// Written by builds that predate ``queueTier``; read only.
         case fromAutoplay
     }
@@ -240,6 +246,7 @@ public struct Song: Codable, Hashable, Sendable, Identifiable {
         playbackSource = try c.decodeIfPresent(String.self, forKey: .playbackSource)
         playbackSourceType = (try? c.decodeIfPresent(PlaybackSourceType.self, forKey: .playbackSourceType)) ?? nil
         playbackSourceId = try c.decodeIfPresent(String.self, forKey: .playbackSourceId)
+        credits = (try? c.decodeIfPresent(SongCredits.self, forKey: .credits)) ?? nil
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -268,6 +275,7 @@ public struct Song: Codable, Hashable, Sendable, Identifiable {
         try c.encodeIfPresent(playbackSource, forKey: .playbackSource)
         try c.encodeIfPresent(playbackSourceType, forKey: .playbackSourceType)
         try c.encodeIfPresent(playbackSourceId, forKey: .playbackSourceId)
+        try c.encodeIfPresent(credits, forKey: .credits)
     }
 }
 
@@ -286,13 +294,16 @@ public enum Artwork {
     /// `url` with its size hint replaced by `w<px>-h<px>`, or unchanged when it has none.
     public static func resized(_ url: String?, to px: Int) -> String? {
         guard let url else { return nil }
-        return url.replacing(sizeHint, with: "w\(px)-h\(px)")
+        // YouTube sizes with `w<n>-h<n>`, Apple Music with `<n>x<n>bb`; a URL carries one or the other.
+        let resized = url.replacing(sizeHint, with: "w\(px)-h\(px)")
+        return resized.replacing(appleSizeHint, with: "\(px)x\(px)bb")
     }
 
     /// Built once: every cover a list row draws comes through here on the main thread, and a regex
     /// built per call is compiled again on its first match. Shared across threads, which a Regex
     /// allows: it is immutable, and compiles its program once, atomically.
     nonisolated(unsafe) private static let sizeHint = #/w\d+-h\d+/#
+    nonisolated(unsafe) private static let appleSizeHint = #/\d+x\d+bb/#
 }
 
 /// The artwork size ladder, in pixels. One value per surface rather than per row height, so

@@ -80,9 +80,9 @@ final class ListBottomInsetTests: XCTestCase {
     }
 
     func testTheInsetMatchesAndroidsListPadding() {
-        XCTAssertEqual(detailBottomInset(bottomInset: 83, isPlaying: true), 127)
-        XCTAssertEqual(detailBottomInset(bottomInset: 83, isPlaying: false), 57)
-        XCTAssertEqual(detailBottomInset(bottomInset: 300, isPlaying: true), 0, "never negative")
+        XCTAssertEqual(detailBottomInset(bottomInset: 83, isPlaying: true), 12)
+        XCTAssertEqual(detailBottomInset(bottomInset: 83, isPlaying: false), 12)
+        XCTAssertEqual(detailBottomInset(bottomInset: 300, isPlaying: true), 12, "a fixed margin; the safe area carries the bars")
     }
 }
 

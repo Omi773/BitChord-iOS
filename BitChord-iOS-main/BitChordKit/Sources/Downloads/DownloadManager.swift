@@ -128,6 +128,9 @@ public final class DownloadManager {
     public private(set) var networkStatus: NetworkStatus
     /// Supplies lyrics to embed; the Lyrics module is wired in by the app. Nil embeds none.
     @ObservationIgnored public var lyricsProvider: DownloadLyricsProvider?
+    /// Looks each download up in Apple Music so its file and library entry carry Apple's details.
+    /// Set by the app (the Canvas module does the asking). Nil leaves a download as it came.
+    @ObservationIgnored public var metadataProvider: DownloadMetadataProvider?
     /// Told about a googlevideo refusal before the track is resolved again; see
     /// ``DownloadStreamRefusalHandler``.
     @ObservationIgnored public var refusalHandler: DownloadStreamRefusalHandler?
@@ -464,9 +467,13 @@ public final class DownloadManager {
         let lyricsTask = Task { await LyricsEmbedding.fetch(provider, track: song, timeout: timeout) }
         let allowsMetered = !settings.wifiOnlyDownloads
         let artworkTask = Task { [tagger] in await tagger.artwork(for: song, allowsMeteredNetwork: allowsMetered) }
+        // Raced with the transfer too: Apple Music's version of the track, for the tags and the library.
+        let metadataLookup = metadataProvider
+        let metadataTask = Task { await metadataLookup?(song) }
         defer {
             lyricsTask.cancel()
             artworkTask.cancel()
+            metadataTask.cancel()
         }
 
         let pendingFile = try store.begin(name: record.fileName, token: job.token, resumeAt: record.transfer.written)
@@ -502,16 +509,24 @@ public final class DownloadManager {
                 }
             }
             let lyrics = await lyricsTask.value
-            let artwork = await artworkTask.value
+            var artwork = await artworkTask.value
+            // Apple Music's version of the song, when it matched: its title, artist, album, cover,
+            // explicit flag and credits go into the file and the library. The id is unchanged.
+            let matched = await metadataTask.value
+            let tagged = matched ?? song
+            if let matched, matched.thumbnailUrl != song.thumbnailUrl, MediaTagger.carriesTags(route.fileExtension),
+               let better = await tagger.artwork(for: matched, allowsMeteredNetwork: allowsMetered) {
+                artwork = better
+            }
             // Publish only after the metadata is part of the file, so concurrent album workers
             // never expose an untagged track.
-            await tagger.embed(file: pendingFile.partURL, track: song, extension: route.fileExtension,
-                               lyrics: lyrics, artwork: artwork)
-            let artworkPath = tagger.persistArtwork(sourceUrl: song.thumbnailUrl, artwork: artwork)
+            await tagger.embed(file: pendingFile.partURL, track: tagged, extension: route.fileExtension,
+                               lyrics: lyrics, artwork: artwork, extras: DownloadTagExtras(song: tagged))
+            let artworkPath = tagger.persistArtwork(sourceUrl: tagged.thumbnailUrl, artwork: artwork)
             try Task.checkCancellation()
             guard isCurrent(original) else { throw CancellationError() }
             let file = try pendingFile.commit()
-            library.remember(asked: song, fetched: song, file: file, downloadFormat: route.downloadFormat, artworkPath: artworkPath)
+            library.remember(asked: tagged, fetched: tagged, file: file, downloadFormat: route.downloadFormat, artworkPath: artworkPath)
             session.done(song.videoId)
             active.removeValue(forKey: song.videoId)
             TrackLog.d("Downloads", "saved \(record.fileName)")

@@ -55,7 +55,7 @@ struct SongActionsSheet: View {
                 .padding(.bottom, 24)
             }
             .scrollBounceBehavior(.basedOnSize)
-            .presentationBackground { TintedSheetBackground(artwork: song.thumbnailUrl, palette: palette) }
+            .glassSheetBackground { TintedSheetBackground(artwork: song.thumbnailUrl, palette: palette) }
             .presentationDragIndicator(.visible)
             .tint(palette.accentColor)
         }
@@ -77,6 +77,12 @@ struct SongActionsSheet: View {
     private func rows(palette: ArtworkPalette) -> some View {
         SheetTrackHeader(song: song, subtitleColor: palette.onBackgroundVariantColor)
         SheetDivider(color: palette.dividerColor)
+
+        if let credits = song.credits, !credits.isEmpty {
+            SongCreditsBlock(credits: credits, album: song.albumName,
+                             valueColor: palette.onBackgroundColor, labelColor: palette.onBackgroundVariantColor)
+            SheetDivider(color: palette.dividerColor)
+        }
 
         versionRows(palette: palette)
 

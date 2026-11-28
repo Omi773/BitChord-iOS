@@ -27,13 +27,53 @@
       },
       "versions": [
         {
+          "version": "0.1.5",
+          "buildVersion": "1",
+          "date": "2026-11-28",
+          "localizedDescription": "Added:\n• Apple Music details in search. Songs in search results now show Apple Music's title, artist, album, cover art, length and explicit tag instead of YouTube's. Songs Apple Music doesn't list are left out of the results. Playback still comes from YouTube.\n• Credits. Press and hold a song to see its writers, album, release date, genre, label, copyright and ISRC under the song's name.\n• Sharper covers. Songs matched with Apple Music use its cover art, which stays crisp on the full player and the lock screen.\nChanged:\n• Songs that are uploaded twice under different video ids now show once in search.\n• If Apple Music can't be reached when you search, the songs are shown as YouTube sent them instead of an empty list.\n• The Videos tab, Albums, Artists, Playlists and the live results while you type still use YouTube's details.",
+          "downloadURL": "https://github.com/Omi773/BitChord-iOS/releases/download/v0.1.5/BitChord-0.1.5-unsigned.ipa",
+          "size": 55277588,
+          "sha256": "fd127f35b483839f1b241745a6d1f91fc33ef9f896e05d0d5020f98dd19552e3",
+          "minOSVersion": "17.0"
+        },
+        {
+          "version": "0.1.4",
+          "buildVersion": "1",
+          "date": "2026-11-28",
+          "localizedDescription": "Added:\n• Liquid Glass mini player. On iOS 26 the mini player is part of the tab bar and uses Liquid Glass.\n• Mini player folds into the tab bar. Scroll down and the tab bar shrinks, with the mini player between the tab buttons and Search as its own button, like Apple Music. Scroll up to bring it back.\n• Liquid Glass sheets. Audio output, Audio pipeline, the song menu, Switch account, the lyrics sheets and the Listen Together members sheet now use Liquid Glass on iOS 26.\nChanged:\n• Removed the blank space under the last row of Settings, Library, History and artist pages. The version line now sits right above the mini player.\n• Fixed the solid strip behind the mini player and tab bar on the On Device folders (Downloads and Local Music). The lists now scroll behind the glass.\n• On iOS 17 to 25 the mini player and sheets look the same as before.",
+          "downloadURL": "https://github.com/Omi773/BitChord-iOS/releases/download/v0.1.4/BitChord-0.1.4-unsigned.ipa",
+          "size": 55179592,
+          "sha256": "28658e7f597ebfc4057256d0cf373ea7965e1c7d83940efde702cba71d527494",
+          "minOSVersion": "17.0"
+        },
+        {
+          "version": "0.1.3",
+          "buildVersion": "2",
+          "date": "2026-11-28",
+          "localizedDescription": "Added:\n• BitChord-iOS finally hit the files app. BitChord now has its own folder in the Files app: Files > On My iPhone > BitChord.\n• Music folder. Downloaded songs are saved in BitChord > Music. Songs you downloaded before this version move there on their own the first time you open the app.\n• AnimatedArt folder. Animated artwork is saved in BitChord > AnimatedArt, with a folder for each album, and still plays offline.\n• Diagnostics folder. The diagnostic log is saved in BitChord > Diagnostics. It is written while \"Keep diagnostic log\" is on in Settings.\nChanged:\n• Animated artwork is no longer cleared when BitChord updates.\n• Animated artwork saved by 0.1.2 is not carried over. It downloads again the next time its song plays.",
+          "downloadURL": "https://github.com/Omi773/BitChord-iOS/releases/download/v0.1.3/BitChord-0.1.3-unsigned.ipa",
+          "size": 55143715,
+          "sha256": "e24a38abff1cb39dd7a749ccbb83ea2da3757971abae770b146f93f0ff463d8f",
+          "minOSVersion": "17.0"
+        },
+        {
+          "version": "0.1.2",
+          "buildVersion": "2",
+          "date": "2026-11-28",
+          "localizedDescription": "Added:\n• Animated artwork now plays offline. BitChord saves a song's animated artwork on your phone the first time it plays, so it still plays with no connection, on the Now Playing screen and on the lock screen. The animated artwork you play least is deleted first to free space.",
+          "downloadURL": "https://github.com/Omi773/BitChord-iOS/releases/download/v0.1.2/BitChord-0.1.2-unsigned.ipa",
+          "size": 55132119,
+          "sha256": "4048bffc5f0f08bf496e27338416851351569ad036fd43b46d22dbd244ad6279",
+          "minOSVersion": "17.0"
+        },
+        {
           "version": "0.1.1",
           "buildVersion": "2",
           "date": "2026-11-28",
           "localizedDescription": "Added:\n• BitChord now sends the explicit flag to iOS with the current track, so the lock screen, Control Center, CarPlay and AirPlay can show the \"E\" beside the song title. Whether and how it is drawn is up to iOS.\nChanged:\n• Now Playing: the \"E\" badge sits directly after the song title instead of at the far edge of the row. A title that scrolls takes the badge with it, and VoiceOver reads \"Explicit\" after the title.\n• App version is 0.1.1 (build 2), for the app, the widgets and the Share extension.\n• The Release IPA workflow reads the version from the IPA itself, so the version no longer has to be typed in for each release.\nFixed:\n• The \"E\" badge floating away from short titles on the Now Playing screen.",
           "downloadURL": "https://github.com/Omi773/BitChord-iOS/releases/download/v0.1.1/BitChord-0.1.1-unsigned.ipa",
-          "size": 55115598,
-          "sha256": "f55382065bf1c8f8c005e883fc032b04acd46019f107f255251257cf7fe3a06b",
+          "size": 55115555,
+          "sha256": "0da43401d012c5c89fa6736b6ec94d926c28ff14baee77e280b175d7447ad512",
           "minOSVersion": "17.0"
         }
       ]

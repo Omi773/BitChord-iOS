@@ -35,6 +35,8 @@ public let wordLyricsField = "BITCHORD_LYRICS"
 public enum Mp4Tagger {
     /// The reverse-DNS owner of the freeform lyrics item, which is what keeps the name ours.
     public static let freeformMean = "com.music.bitchord"
+    /// The owner iTunes gives its own freeform items (`ISRC`, `LABEL`), so other players find them.
+    static let iTunesMean = "com.apple.iTunes"
 
     /// Box types whose payload is itself a run of child boxes, on the path down to `stco`/`co64`.
     private static let containers: Set<String> = ["moov", "trak", "mdia", "minf", "stbl"]
@@ -55,7 +57,8 @@ public enum Mp4Tagger {
         lyrics: String?,
         cover: Data?,
         coverIsPng: Bool,
-        wordLyrics: String? = nil
+        wordLyrics: String? = nil,
+        extras: DownloadTagExtras = .none
     ) -> Data? {
         var items: [[UInt8]] = []
         // © is iTunes's own "copyright" prefix for the text atoms below — not a copyright mark here,
@@ -68,17 +71,43 @@ public enum Mp4Tagger {
         if let lyrics, !lyrics.isBlank { items.append(textItem("\u{A9}lyr", lyrics)) }
         if let wordLyrics, !wordLyrics.isBlank { items.append(freeformItem(name: wordLyricsField, text: wordLyrics)) }
         if let cover, !cover.isEmpty { items.append(coverItem([UInt8](cover), isPng: coverIsPng)) }
+        // Apple Music's extra details. Only the items written here replace what the file already
+        // has; one the catalogue had nothing for leaves the file's own value alone.
+        var owned = ownedItems
+        var ownedFreeform: Set<String> = []
+        func text(_ fourCC: String, _ value: String?) {
+            guard let value, !value.isBlank else { return }
+            items.append(textItem(fourCC, value))
+            owned.insert(fourCC)
+        }
+        text("\u{A9}gen", extras.genre)
+        text("\u{A9}day", extras.releaseDate)
+        text("\u{A9}wrt", extras.composers)
+        text("cprt", extras.copyright)
+        if extras.isExplicit {
+            // `rtng`: an integer (type 21), 1 = explicit.
+            items.append(box("rtng", dataAtom(21, [1])))
+            owned.insert("rtng")
+        }
+        if let isrc = extras.isrc, !isrc.isBlank {
+            items.append(freeformItem(mean: iTunesMean, name: "ISRC", text: isrc))
+            ownedFreeform.insert("ISRC")
+        }
+        if let label = extras.recordLabel, !label.isBlank {
+            items.append(freeformItem(mean: iTunesMean, name: "LABEL", text: label))
+            ownedFreeform.insert("LABEL")
+        }
         guard !items.isEmpty else { return nil }
 
         let bytes = [UInt8](data)
         guard let moov = parseBoxes(bytes, 0, bytes.count).first(where: { $0.type == "moov" }) else { return nil }
-        guard let output = rewrite(bytes, moov: moov, items: items) else { return nil }
+        guard let output = rewrite(bytes, moov: moov, items: items, owned: owned, ownedFreeform: ownedFreeform) else { return nil }
         return Data(output)
     }
 
     // MARK: Rewrite
 
-    private static func rewrite(_ bytes: [UInt8], moov: BoxRef, items: [[UInt8]]) -> [UInt8]? {
+    private static func rewrite(_ bytes: [UInt8], moov: BoxRef, items: [[UInt8]], owned: Set<String>, ownedFreeform: Set<String>) -> [UInt8]? {
         let children = parseBoxes(bytes, moov.contentOffset, moov.end)
         let existing = children.first { $0.type == "udta" }
 
@@ -88,7 +117,7 @@ public enum Mp4Tagger {
         if let existing {
             for child in parseBoxes(bytes, existing.contentOffset, existing.end) {
                 if child.type == "meta" {
-                    keptItems = existingItems(bytes, meta: child)
+                    keptItems = existingItems(bytes, meta: child, owned: owned, ownedFreeform: ownedFreeform)
                 } else {
                     keptChildren += bytes[child.offset..<child.end]
                 }
@@ -209,13 +238,16 @@ public enum Mp4Tagger {
     }
 
     /// The items of an existing `meta/ilst` that this rewrite doesn't own.
-    private static func existingItems(_ bytes: [UInt8], meta: BoxRef) -> [[UInt8]] {
+    private static func existingItems(_ bytes: [UInt8], meta: BoxRef, owned: Set<String>, ownedFreeform: Set<String>) -> [[UInt8]] {
         // meta is a FullBox: four bytes of version/flags before its children.
         let children = parseBoxes(bytes, meta.contentOffset + 4, meta.end)
         guard let ilst = children.first(where: { $0.type == "ilst" }) else { return [] }
         return parseBoxes(bytes, ilst.contentOffset, ilst.end).compactMap { item in
-            if ownedItems.contains(item.type) { return nil }
-            if item.type == "----", let name = freeformName(bytes, item), name == (freeformMean, wordLyricsField) { return nil }
+            if owned.contains(item.type) { return nil }
+            if item.type == "----", let name = freeformName(bytes, item) {
+                if name == (freeformMean, wordLyricsField) { return nil }
+                if name.0 == iTunesMean, ownedFreeform.contains(name.1) { return nil }
+            }
             return Array(bytes[item.offset..<item.end])
         }
     }
@@ -318,9 +350,9 @@ public enum Mp4Tagger {
     /// the A2 extension shows `<00:01.00>` rather than skipping it. A player that doesn't know this
     /// item ignores it whole, so the standard field stays clean and the timings still survive in the
     /// file. AVFoundation exposes it as `itlk/com.music.bitchord.BITCHORD_LYRICS`.
-    private static func freeformItem(name: String, text: String) -> [UInt8] {
+    private static func freeformItem(mean owner: String = Mp4Tagger.freeformMean, name: String, text: String) -> [UInt8] {
         // Both are FullBoxes: four bytes of version/flags, then the string.
-        let mean = box("mean", [0, 0, 0, 0] + Array(freeformMean.utf8))
+        let mean = box("mean", [0, 0, 0, 0] + Array(owner.utf8))
         let label = box("name", [0, 0, 0, 0] + Array(name.utf8))
         return box("----", mean + label + dataAtom(1, Array(text.utf8)))
     }

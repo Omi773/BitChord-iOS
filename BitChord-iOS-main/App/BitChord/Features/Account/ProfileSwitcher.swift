@@ -35,8 +35,9 @@ struct ProfileSwitcher: View {
             },
             onOpenSettings: { Self.openSettings(router) }
         )
-        .presentationBackground(model.settings.reduceDynamicBlur ? AnyShapeStyle(Color(.systemBackground))
-                                                                  : AnyShapeStyle(.thinMaterial))
+        .glassSheetBackground(model.settings.reduceDynamicBlur ? AnyShapeStyle(Color(.systemBackground))
+                                                               : AnyShapeStyle(.thinMaterial),
+                              forceFallback: model.settings.reduceDynamicBlur)
         .presentationDragIndicator(.visible)
     }
 }

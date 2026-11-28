@@ -160,7 +160,8 @@ actor MediaTagger {
     /// Writes the tags into `file` (the part file, before it is published — so concurrent album
     /// workers never expose an untagged track). Returns whether the file was rewritten.
     @discardableResult
-    func embed(file: URL, track: Song, extension ext: String, lyrics: DownloadLyrics?, artwork: DownloadArtwork?) -> Bool {
+    func embed(file: URL, track: Song, extension ext: String, lyrics: DownloadLyrics?, artwork: DownloadArtwork?,
+               extras: DownloadTagExtras = .none) -> Bool {
         guard Self.carriesTags(ext) else { return false }
         // The portable field and this app's own, split here so both taggers agree on which string
         // goes where.
@@ -168,7 +169,7 @@ actor MediaTagger {
         let words = lyrics?.enhanced
         let isPng = artwork.map { ImageKind.sniff($0.data) == .png || $0.mime.contains("png") } ?? false
 
-        if ext.lowercased() == "flac", let done = tagFlacStreaming(file: file, track: track, lyrics: plain, words: words, artwork: artwork) {
+        if ext.lowercased() == "flac", let done = tagFlacStreaming(file: file, track: track, lyrics: plain, words: words, artwork: artwork, extras: extras) {
             return done
         }
         guard let original = try? Data(contentsOf: file, options: .alwaysMapped) else {
@@ -179,10 +180,10 @@ actor MediaTagger {
         switch ext.lowercased() {
         case "m4a":
             tagged = Mp4Tagger.tag(original, title: track.title, artist: track.artist, album: track.albumName,
-                                   lyrics: plain, cover: artwork?.data, coverIsPng: isPng, wordLyrics: words)
+                                   lyrics: plain, cover: artwork?.data, coverIsPng: isPng, wordLyrics: words, extras: extras)
         default:
             tagged = FlacTagger.tag(original, title: track.title, artist: track.artist, album: track.albumName,
-                                    lyrics: plain, cover: artwork?.data, coverMime: artwork?.mime ?? "image/jpeg", wordLyrics: words)
+                                    lyrics: plain, cover: artwork?.data, coverMime: artwork?.mime ?? "image/jpeg", wordLyrics: words, extras: extras)
         }
         guard let tagged else { return false }
         do {
@@ -203,7 +204,7 @@ actor MediaTagger {
     ///   to write); nil asks the caller to fall back to the in-memory path, which happens only for a
     ///   metadata region larger than ``flacHeadBytes`` or an I/O failure. The original is untouched
     ///   until the finished copy replaces it in one move.
-    private func tagFlacStreaming(file: URL, track: Song, lyrics: String?, words: String?, artwork: DownloadArtwork?) -> Bool? {
+    private func tagFlacStreaming(file: URL, track: Song, lyrics: String?, words: String?, artwork: DownloadArtwork?, extras: DownloadTagExtras) -> Bool? {
         guard let reader = try? FileHandle(forReadingFrom: file) else { return nil }
         defer { try? reader.close() }
         guard let head = try? reader.read(upToCount: Self.flacHeadBytes) else { return nil }
@@ -211,7 +212,7 @@ actor MediaTagger {
         let wholeFile = head.count < Self.flacHeadBytes
         guard let rewrite = FlacTagger.header(head, title: track.title, artist: track.artist, album: track.albumName,
                                               lyrics: lyrics, cover: artwork?.data, coverMime: artwork?.mime ?? "image/jpeg",
-                                              wordLyrics: words) else {
+                                              wordLyrics: words, extras: extras) else {
             return wholeFile ? false : nil
         }
         let temp = file.deletingLastPathComponent().appending(path: ".\(file.lastPathComponent).tagging")

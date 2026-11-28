@@ -139,12 +139,50 @@ final class AppModel {
         )
         // An add-on's DASH stream arrives as a converted playlist on this device (`bitchord-hls://`).
         manager.localPlaylist = { SourceManifestFiles.standard.playlistText(for: $0) }
+        // Each download is looked up in Apple Music: its tags and library entry carry Apple's details.
+        manager.metadataProvider = { song in
+            if case .matched(let matched) = await AppleMusicMetadata.shared.outcome(for: song) { return matched }
+            return nil
+        }
         return manager
     }()
 
     /// What is saved on this device (downloads and Files imports). Opened on first use: the
     /// first track that needs to know whether it is saved.
     @ObservationIgnored private(set) lazy var downloadLibrary = DownloadLibrary.live()
+
+    /// Asks Apple Music about the saved tracks that were never asked about (older downloads, files
+    /// from the Local Music folder), a few at a time, so the library shows Apple's details too.
+    /// Ends when nothing is left, or when Apple can't be reached; started again on the next launch
+    /// or return to the app.
+    @ObservationIgnored private var metadataBackfill: Task<Void, Never>?
+
+    /// The Lock Screen / Dynamic Island card for songs being downloaded.
+    @ObservationIgnored private lazy var downloadActivity = DownloadLiveActivity()
+
+    func startMetadataBackfill() {
+        guard metadataBackfill == nil else { return }
+        let library = downloadLibrary
+        metadataBackfill = Task { [weak self] in
+            defer { self?.metadataBackfill = nil }
+            // Let the launch settle first; this is housekeeping, not something to wait for.
+            try? await Task.sleep(for: .seconds(15))
+            while !Task.isCancelled {
+                let batch = library.tracksAwaitingMetadata(limit: 5)
+                if batch.isEmpty { return }
+                var reachable = true
+                for song in batch {
+                    switch await AppleMusicMetadata.shared.outcome(for: song) {
+                    case .matched(let matched): library.applyMetadata(to: song.videoId, matched: matched)
+                    case .noMatch: library.applyMetadata(to: song.videoId, matched: nil)
+                    case .unavailable: reachable = false
+                    }
+                }
+                if !reachable { return }
+                try? await Task.sleep(for: .seconds(2))
+            }
+        }
+    }
 
     /// Keeps the Local Music library equal to the folder the listener picked: listed at launch, on
     /// every return to the app and every few seconds in between. Idle until a folder is chosen.
@@ -446,6 +484,8 @@ final class AppModel {
         guard !started else { return }
         started = true
         if LocalMusicFolder.isChosen { localFolderSync.start() }
+        startMetadataBackfill()
+        downloadActivity.follow(session: downloads.session)
         Self.atmosSetting.value = settings.dolbyAtmos
         trackers.append(ChangeTracker.track({ [settings] in settings.dolbyAtmos }) { on in Self.atmosSetting.value = on })
         if let audioCache { _ = audioCache.followLimit(of: settings) }
@@ -526,6 +566,7 @@ final class AppModel {
 
     func scenePhaseChanged(_ phase: ScenePhase) {
         isInForeground = phase == .active
+        if phase == .active { startMetadataBackfill() }
         if phase == .active, LocalMusicFolder.isChosen {
             localFolderSync.start()
             Task { await localFolderSync.sync() }

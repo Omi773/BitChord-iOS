@@ -44,10 +44,11 @@ public enum FlacTagger {
         lyrics: String?,
         cover: Data?,
         coverMime: String,
-        wordLyrics: String? = nil
+        wordLyrics: String? = nil,
+        extras: DownloadTagExtras = .none
     ) -> Data? {
         guard let done = header(data, title: title, artist: artist, album: album, lyrics: lyrics,
-                                cover: cover, coverMime: coverMime, wordLyrics: wordLyrics) else { return nil }
+                                cover: cover, coverMime: coverMime, wordLyrics: wordLyrics, extras: extras) else { return nil }
         var out = done.metadata
         // The frames, verbatim.
         out.append(data.subdata(in: (data.startIndex + done.audioStart)..<data.endIndex))
@@ -67,7 +68,8 @@ public enum FlacTagger {
         lyrics: String?,
         cover: Data?,
         coverMime: String,
-        wordLyrics: String? = nil
+        wordLyrics: String? = nil,
+        extras: DownloadTagExtras = .none
     ) -> Rewrite? {
         let bytes = [UInt8](head)
         guard bytes.count >= magic.count, Array(bytes[0..<magic.count]) == magic else { return nil }
@@ -91,7 +93,7 @@ public enum FlacTagger {
         guard blocks.first?.type == typeStreamInfo else { return nil }
 
         var additions: [(Int, [UInt8])] = []
-        if let comment = vorbisComment(title: title, artist: artist, album: album, lyrics: lyrics, wordLyrics: wordLyrics) {
+        if let comment = vorbisComment(title: title, artist: artist, album: album, lyrics: lyrics, wordLyrics: wordLyrics, extras: extras) {
             additions.append((typeVorbisComment, comment))
         }
         if let cover, !cover.isEmpty {
@@ -130,11 +132,19 @@ public enum FlacTagger {
     ///
     /// `lyrics` goes in as `LYRICS`, where every reader that shows lyrics for a FLAC looks. A field
     /// is a length-prefixed run of UTF-8, so length and newlines don't matter.
-    private static func vorbisComment(title: String, artist: String, album: String?, lyrics: String?, wordLyrics: String?) -> [UInt8]? {
+    private static func vorbisComment(title: String, artist: String, album: String?, lyrics: String?, wordLyrics: String?, extras: DownloadTagExtras = .none) -> [UInt8]? {
         var fields: [String] = []
         if !title.isBlank { fields.append("TITLE=\(title)") }
         if !artist.isBlank { fields.append("ARTIST=\(artist)") }
         if let album, !album.isBlank { fields.append("ALBUM=\(album)") }
+        // Apple Music's details, under the names Vorbis readers (and MusicBrainz taggers) use.
+        if let genre = extras.genre { fields.append("GENRE=\(genre)") }
+        if let date = extras.releaseDate { fields.append("DATE=\(date)") }
+        if let composers = extras.composers { fields.append("COMPOSER=\(composers)") }
+        if let copyright = extras.copyright { fields.append("COPYRIGHT=\(copyright)") }
+        if let isrc = extras.isrc { fields.append("ISRC=\(isrc)") }
+        if let label = extras.recordLabel { fields.append("LABEL=\(label)") }
+        if extras.isExplicit { fields.append("ITUNESADVISORY=1") }
         if let lyrics, !lyrics.isBlank { fields.append("LYRICS=\(lyrics)") }
         // Beside `LYRICS`, never instead of it: an unknown name is skipped by every reader.
         if let wordLyrics, !wordLyrics.isBlank { fields.append("\(wordLyricsField)=\(wordLyrics)") }

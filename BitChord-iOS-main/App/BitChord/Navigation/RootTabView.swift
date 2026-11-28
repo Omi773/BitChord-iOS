@@ -19,13 +19,7 @@ struct RootTabView: View {
 
     var body: some View {
         @Bindable var router = router
-        TabView(selection: tabSelection) {
-            ForEach(AppTab.allCases) { tab in
-                TabStack(tab: tab)
-                    .tabItem { Label(tab.title, systemImage: tab.symbol) }
-                    .tag(tab)
-            }
-        }
+        tabs
         .sheet(item: $router.sheet) { sheet in
             presented(SheetDestination(sheet: sheet))
         }
@@ -60,6 +54,40 @@ struct RootTabView: View {
         .task { openAccountDebugTarget() }
         .dockProbe()
         #endif
+    }
+
+    /// iOS 26: Liquid Glass tab bar that folds into a compact bar while a page scrolls, with the
+    /// mini player riding in it (Apple Music's behaviour). Earlier systems keep the classic bar.
+    @ViewBuilder
+    private var tabs: some View {
+        if #available(iOS 26.0, *) {
+            liquidTabs
+        } else {
+            classicTabs
+        }
+    }
+
+    private var classicTabs: some View {
+        TabView(selection: tabSelection) {
+            ForEach(AppTab.allCases) { tab in
+                TabStack(tab: tab)
+                    .tabItem { Label(tab.title, systemImage: tab.symbol) }
+                    .tag(tab)
+            }
+        }
+    }
+
+    @available(iOS 26.0, *)
+    private var liquidTabs: some View {
+        TabView(selection: tabSelection) {
+            ForEach(AppTab.allCases) { tab in
+                Tab(tab.title, systemImage: tab.symbol, value: tab, role: tab == .search ? TabRole.search : nil) {
+                    TabStack(tab: tab)
+                }
+            }
+        }
+        .tabBarMinimizeBehavior(.onScrollDown)
+        .miniPlayerTabAccessory(isEnabled: player.currentSong != nil)
     }
 
     /// A sheet or cover hung from the TabView, given the environment this view reads. On a Mac
@@ -153,6 +181,10 @@ private struct BottomAccessory: View {
     let tab: AppTab
     @Environment(PlayerController.self) private var player
 
+    private var showsFloatingMini: Bool {
+        player.currentSong != nil && !LiquidGlass.hostsMiniPlayerInTabBar
+    }
+
     var body: some View {
         VStack(spacing: 8) {
             if let notice = player.notice {
@@ -164,12 +196,13 @@ private struct BottomAccessory: View {
                         withAnimation(.easeOut(duration: 0.25)) { player.notice = nil }
                     }
             }
-            if player.currentSong != nil {
+            // On iOS 26 the mini player lives in the tab bar's own accessory slot instead.
+            if player.currentSong != nil, !LiquidGlass.hostsMiniPlayerInTabBar {
                 MiniPlayer(tab: tab)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .padding(.bottom, player.currentSong == nil && player.notice == nil ? 0 : 8)
+        .padding(.bottom, showsFloatingMini || player.notice != nil ? 8 : 0)
         .animation(.spring(duration: 0.3), value: player.notice?.id)
         .animation(.spring(duration: 0.3), value: player.currentSong == nil)
     }

@@ -28,9 +28,19 @@ enum MiniPlayerSwipe: Hashable {
     }
 }
 
+/// Where the mini player is drawn.
+enum MiniPlayerStyle: Equatable {
+    /// The bar floating above the tab bar (iOS 17–25): draws its own background.
+    case floating
+    /// Inside the iOS 26 tab bar's bottom accessory: the system draws the Liquid Glass.
+    /// `inline` is the folded form between the compact tab buttons (art, title, play).
+    case accessory(inline: Bool)
+}
+
 /// The mini player. Shown by the tab shell only while something is loaded.
 struct MiniPlayer: View {
     let tab: AppTab
+    var style: MiniPlayerStyle = .floating
 
     @Environment(PlayerController.self) private var player
     @Environment(AppRouter.self) private var router
@@ -45,6 +55,11 @@ struct MiniPlayer: View {
     /// `onEnded` never runs.
     @GestureState private var dragging = false
 
+    private var isAccessory: Bool { style != .floating }
+    private var isInline: Bool { style == .accessory(inline: true) }
+    private var artSize: CGFloat { isInline ? 30 : (isAccessory ? 36 : 40) }
+    private var controlSize: CGFloat { isInline ? 32 : (isAccessory ? 36 : 40) }
+
     var body: some View {
         if let song = player.currentSong {
             content(song)
@@ -53,9 +68,9 @@ struct MiniPlayer: View {
 
     private func content(_ song: Song) -> some View {
         let shape = Capsule(style: .continuous)
-        return HStack(spacing: 10) {
+        return HStack(spacing: isInline ? 8 : 10) {
             ArtworkImage(song: song, pixels: ArtworkSize.row)
-                .frame(width: 40, height: 40)
+                .frame(width: artSize, height: artSize)
                 .opacity(router.nowPlaying.coversMiniArt ? 0 : 1)
                 .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { rect in
                     router.nowPlaying.reportMiniArt(MiniArt(rect: rect, corner: AppTheme.artCorner), on: tab)
@@ -70,46 +85,60 @@ struct MiniPlayer: View {
                         Image(systemName: AppSymbol.explicit).font(.caption2).foregroundStyle(.secondary)
                     }
                 }
-                Text(song.artist)
-                    .font(AppTheme.Typeface.bodySmall)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .accessibilityIdentifier("miniPlayer.artist")
+                if !isInline {
+                    Text(song.artist)
+                        .font(AppTheme.Typeface.bodySmall)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .accessibilityIdentifier("miniPlayer.artist")
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .offset(x: dragOffset * 0.35)
 
             playPauseButton
-            Button {
-                Haptics.shared.play(.skipNext)
-                player.next()
-            } label: {
-                Image(systemName: AppSymbol.next)
-                    .font(.system(size: 22, weight: .semibold))
-                    .frame(width: 40, height: 40)
-                    .contentShape(Rectangle())
+            if !isInline {
+                Button {
+                    Haptics.shared.play(.skipNext)
+                    player.next()
+                } label: {
+                    Image(systemName: AppSymbol.next)
+                        .font(.system(size: 22, weight: .semibold))
+                        .frame(width: controlSize, height: controlSize)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(player.controlsLocked)
+                .opacity(player.controlsLocked ? 0.3 : 1)
+                .accessibilityLabel(L10n.widgetNext)
+                .accessibilityIdentifier("miniPlayer.next")
             }
-            .buttonStyle(.plain)
-            .disabled(player.controlsLocked)
-            .opacity(player.controlsLocked ? 0.3 : 1)
-            .accessibilityLabel(L10n.widgetNext)
-            .accessibilityIdentifier("miniPlayer.next")
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, isAccessory ? 14 : 12)
+        .padding(.vertical, isAccessory ? 4 : 8)
         .background {
-            if settings.reduceDynamicBlur {
-                shape.fill(Color(.secondarySystemBackground))
-            } else {
-                shape.fill(.regularMaterial)
+            // In the tab bar's accessory the system supplies the Liquid Glass; drawing a
+            // material under it would be glass on glass.
+            if !isAccessory {
+                if settings.reduceDynamicBlur {
+                    shape.fill(Color(.secondarySystemBackground))
+                } else {
+                    shape.fill(.regularMaterial)
+                }
             }
         }
         .overlay(alignment: .bottom) {
-            MiniPlayerProgress()
-                .padding(.horizontal, 22)
-                .padding(.bottom, 1)
+            if !isInline {
+                MiniPlayerProgress()
+                    .padding(.horizontal, 22)
+                    .padding(.bottom, 1)
+            }
         }
-        .overlay(shape.strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
+        .overlay {
+            if !isAccessory {
+                shape.strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+            }
+        }
         .clipShape(shape)
         .contentShape(shape)
         .onTapGesture {
@@ -121,9 +150,9 @@ struct MiniPlayer: View {
             guard !now, let cancelled = axis else { return }
             cancelDrag(cancelled)
         }
-        .offset(y: -lift)
-        .padding(.horizontal, AppTheme.gutter)
-        .frame(maxWidth: AppTheme.floatingBarMaxWidth)
+        .offset(y: isAccessory ? 0 : -lift)
+        .padding(.horizontal, isAccessory ? 0 : AppTheme.gutter)
+        .frame(maxWidth: isAccessory ? CGFloat.infinity : AppTheme.floatingBarMaxWidth)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("miniPlayer")
         .accessibilityAction(named: Text(L10n.nowPlaying)) { router.nowPlaying.open() }
@@ -133,7 +162,7 @@ struct MiniPlayer: View {
     private var playPauseButton: some View {
         if player.isBuffering && player.playWhenReady {
             ProgressView()
-                .frame(width: 40, height: 40)
+                .frame(width: controlSize, height: controlSize)
                 .accessibilityIdentifier("miniPlayer.loading")
         } else {
             Button {
@@ -142,7 +171,7 @@ struct MiniPlayer: View {
             } label: {
                 Image(systemName: player.playWhenReady ? AppSymbol.pause : AppSymbol.play)
                     .font(.system(size: 24, weight: .semibold))
-                    .frame(width: 40, height: 40)
+                    .frame(width: controlSize, height: controlSize)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)

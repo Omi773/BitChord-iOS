@@ -97,7 +97,7 @@ struct LyricsSourcesSheet: View {
                 .accessibilityIdentifier("lyricsSources.done")
         }
         .presentationDetents([.large])
-        .presentationBackground(.regularMaterial)
+        .glassSheetBackground(.regularMaterial)
         .alert(L10n.paxsenixApiKey, isPresented: $editingKey) {
             SecureField(L10n.paxsenixApiKey, text: $keyInput)
                 .textInputAutocapitalization(.never)
