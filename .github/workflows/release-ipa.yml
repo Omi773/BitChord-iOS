@@ -1,21 +1,24 @@
-# TEMPORARY. Publishes the IPA from the latest successful "Build IPA" run as a GitHub Release.
-# Delete this file once the release is out (or keep it for the next release).
+# Publishes the IPA from the latest successful "Build IPA" run as a GitHub Release. Reusable: run it
+# again for every version.
 #
-# Add this file by hand on github.com (Add file -> Create new file -> .github/workflows/release-ipa.yml).
-# The "Apply update" workflow cannot add or change files in .github/workflows.
+# Add or change this file by hand on github.com (Add file -> Create new file ->
+# .github/workflows/release-ipa.yml). The "Apply update" workflow cannot add or change files in
+# .github/workflows.
 #
 # Order: 1) Actions -> Apply update (it starts Build IPA)  2) wait for Build IPA to succeed
 #        3) Actions -> Release IPA -> Run workflow.
-# The release notes come from docs/release-<version>.md in the repo.
+# The version is read from the IPA itself, so there is nothing to type. The release notes come from
+# docs/release-<version>.md in the repo (docs/release-0.1.1.md for version 0.1.1), so write that
+# file before releasing a new version.
 name: Release IPA
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: Version to release (must match the version inside the IPA)
+        description: Version to release. Leave empty to use the version inside the IPA
         type: string
-        default: "0.1.0"
+        default: ""
       prerelease:
         description: Mark the release as a pre-release
         type: boolean
@@ -31,7 +34,7 @@ jobs:
     timeout-minutes: 15
     env:
       GH_TOKEN: ${{ github.token }}
-      VERSION: ${{ inputs.version }}
+      REQUESTED: ${{ inputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -45,30 +48,40 @@ jobs:
           ls -l dl
           test "$(ls dl/*.ipa | wc -l)" = 1 || { echo "Expected exactly one IPA"; exit 1; }
 
-      - name: Check the version and rename the IPA
+      - name: Read the version and rename the IPA
         run: |
           set -euo pipefail
           SRC=$(ls dl/*.ipa)
           unzip -p "$SRC" "Payload/BitChord.app/Info.plist" > Info.plist
           INSIDE=$(python3 -c 'import plistlib;print(plistlib.load(open("Info.plist","rb"))["CFBundleShortVersionString"])')
-          echo "Version inside the IPA: $INSIDE"
-          [ "$INSIDE" = "$VERSION" ] || { echo "The IPA is version $INSIDE but you asked for $VERSION. Run Build IPA again after applying the update."; exit 1; }
+          BUILD=$(python3 -c 'import plistlib;print(plistlib.load(open("Info.plist","rb"))["CFBundleVersion"])')
+          echo "Version inside the IPA: $INSIDE (build $BUILD)"
+          WANTED=$(echo "$REQUESTED" | xargs)
+          WANTED="${WANTED#v}"
+          if [ -n "$WANTED" ] && [ "$INSIDE" != "$WANTED" ]; then
+            echo "The IPA is version $INSIDE but you asked for $WANTED. Run Build IPA again after applying the update."
+            exit 1
+          fi
+          {
+            echo "VERSION=$INSIDE"
+            echo "BUILD=$BUILD"
+          } >> "$GITHUB_ENV"
           mkdir -p release
-          cp "$SRC" "release/BitChord-$VERSION-unsigned.ipa"
+          cp "$SRC" "release/BitChord-$INSIDE-unsigned.ipa"
           ls -l release
 
       - name: Write the release notes
         run: |
           set -euo pipefail
           NOTES="docs/release-$VERSION.md"
-          test -f "$NOTES" || { echo "Missing $NOTES"; exit 1; }
+          test -f "$NOTES" || { echo "Missing $NOTES. Write the release notes for $VERSION first."; exit 1; }
           IPA="release/BitChord-$VERSION-unsigned.ipa"
           SHA=$(sha256sum "$IPA" | cut -d' ' -f1)
           SIZE=$(du -h "$IPA" | cut -f1)
           cp "$NOTES" notes.md
           {
             printf '\n## Checksum\n\n'
-            printf 'File: `BitChord-%s-unsigned.ipa` (%s)\n\n' "$VERSION" "$SIZE"
+            printf 'File: `BitChord-%s-unsigned.ipa` (%s), version %s, build %s\n\n' "$VERSION" "$SIZE" "$VERSION" "$BUILD"
             printf 'SHA-256:\n\n```\n%s\n```\n' "$SHA"
           } >> notes.md
 
