@@ -705,8 +705,12 @@ struct PlayerMarqueeText: View {
     var color: Color = .white
     var enabled = true
     var startDelay: TimeInterval = 0
+    /// Draws the explicit "E" badge straight after the text, so it sits against the last letter
+    /// instead of at the far edge of the row, and travels with the title when it scrolls.
+    var explicit = false
     var onOverflowChange: (Bool) -> Void = { _ in }
 
+    static let badgeGap: CGFloat = 4
     static let pointsPerSecond: CGFloat = 26
     static let gap: CGFloat = 48
     static let rest: TimeInterval = 5
@@ -739,7 +743,10 @@ struct PlayerMarqueeText: View {
             }
             .overlay(alignment: .leading) {
                 if !scrolls {
-                    Text(text).font(font).foregroundStyle(color).lineLimit(1).truncationMode(.tail)
+                    HStack(spacing: Self.badgeGap) {
+                        Text(text).font(font).foregroundStyle(color).lineLimit(1).truncationMode(.tail)
+                        badge
+                    }
                 }
             }
             .background {
@@ -749,7 +756,7 @@ struct PlayerMarqueeText: View {
                 }
             }
             .background {
-                Text(text).font(font).lineLimit(1).fixedSize().hidden()
+                line.hidden()
                     .background(GeometryReader { proxy in
                         Color.clear.onAppear { textWidth = proxy.size.width }
                             .onChange(of: proxy.size.width) { _, width in textWidth = width }
@@ -757,7 +764,7 @@ struct PlayerMarqueeText: View {
             }
             .clipped()
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(text)
+            .accessibilityLabel(explicit ? "\(text), Explicit" : text)
             .onChange(of: overflowing, initial: true) { _, value in onOverflowChange(value) }
             .task(id: "\(text)|\(scrolls)|\(textWidth)|\(startDelay)") {
                 offset = 0
@@ -778,6 +785,19 @@ struct PlayerMarqueeText: View {
     }
 
     private var line: some View {
-        Text(text).font(font).foregroundStyle(color).lineLimit(1).fixedSize()
+        HStack(spacing: Self.badgeGap) {
+            Text(text).font(font).foregroundStyle(color).lineLimit(1).fixedSize()
+            badge
+        }
+        .fixedSize()
+    }
+
+    @ViewBuilder private var badge: some View {
+        if explicit {
+            Image(systemName: AppSymbol.explicit)
+                .font(.caption)
+                .foregroundStyle(.white.opacity(0.8))
+                .accessibilityHidden(true)
+        }
     }
 }

@@ -106,6 +106,10 @@ enum NowPlayingInfoBuilder {
         if let album = snapshot.item.album, !album.isEmpty {
             info[MPMediaItemPropertyAlbumTitle] = album
         }
+        // The "E" the lock screen, Control Center, CarPlay and AirPlay draw beside the title.
+        if snapshot.item.song?.isExplicit == true {
+            info[MPMediaItemPropertyIsExplicit] = true
+        }
         if snapshot.duration > 0 {
             info[MPMediaItemPropertyPlaybackDuration] = snapshot.duration
         }

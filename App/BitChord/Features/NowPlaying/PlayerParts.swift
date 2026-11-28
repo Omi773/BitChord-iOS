@@ -100,14 +100,9 @@ struct PlayerCredits: View {
             VStack(alignment: .leading, spacing: compact ? 0 : 1) {
                 HStack(spacing: 6) {
                     PlayerMarqueeText(text: song.title, font: compact ? .headline : .title3.weight(.bold), enabled: !compact,
+                                explicit: song.isExplicit == true,
                                 onOverflowChange: { titleOverflowing = $0 })
                         .accessibilityIdentifier("nowPlaying.title")
-                    if song.isExplicit == true {
-                        Image(systemName: AppSymbol.explicit)
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.8))
-                            .accessibilityHidden(true)
-                    }
                 }
                 .contentShape(Rectangle())
                 .onTapGesture { open(song.albumId) }
