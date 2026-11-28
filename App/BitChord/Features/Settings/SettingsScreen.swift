@@ -30,6 +30,7 @@ struct SettingsScreen: View {
     @State private var pickingDirectSourceStream = false
     @State private var pickingLanguage = false
     @State private var openingSpotifyCanvas = false
+    @State private var openingLegal = false
     // What the last export or import did, shown on the row that did it rather than as a toast: a
     // backup is the one action here whose outcome nobody can check by looking at the app
     // afterwards. Held per direction, or an import's result reports itself under "Export".
@@ -75,23 +76,25 @@ struct SettingsScreen: View {
                 // The version line is the page's colophon, not a setting: it goes when the list is
                 // narrowed to a few rows.
                 if search.isBlank {
-                    Section {
-                        NavigationLink {
-                            LegalScreen()
-                        } label: {
-                            Label("About & legal", systemImage: "info.circle")
+                    // A group of its own, so it gets the same 26 pt of room above its card as every
+                    // other group instead of sitting flush against the one before it.
+                    SettingsGroup(footer: "Licence, Privacy Policy, Terms of Use and contact. \u{00A9} 2026 Omi Shikder.") {
+                        SettingsRow(symbol: "info.circle", title: "About & legal") {
+                            openingLegal = true
                         }
-                    } footer: {
-                        Text("Licence, Privacy Policy, Terms of Use and contact. \u{00A9} 2026 Omi Shikder.")
                     }
 
                     Section {
                         SettingsColophon()
+                            .padding(.vertical, 12)
                             .listRowBackground(Color.clear)
                     }
                 }
             }
             .settingsGroupList()
+            // The last rows (About & legal, the version line) scroll clear of the mini player and
+            // the tab bar, with a track playing or not.
+            .collectionsListBottomInset()
             // What is left after a keystroke is a different list, and the offset the last one was
             // scrolled to means nothing in it.
             .onChange(of: query) { _, _ in
@@ -103,6 +106,7 @@ struct SettingsScreen: View {
         .navigationTitle(L10n.settings)
         .navigationBarTitleDisplayMode(.large)
         .navigationDestination(isPresented: $openingSpotifyCanvas) { SpotifyCanvasSetupScreen() }
+        .navigationDestination(isPresented: $openingLegal) { LegalScreen() }
         .task {
             for await status in app.network.statusUpdates() {
                 metered = status.isMetered

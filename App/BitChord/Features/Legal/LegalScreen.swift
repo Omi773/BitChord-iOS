@@ -77,6 +77,7 @@ struct LegalScreen: View {
                 Text("BitChord is not affiliated with, endorsed by, or connected to YouTube, Google or Apple.")
             }
         }
+        .collectionsListBottomInset()
         .navigationTitle("About & legal")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -149,6 +150,7 @@ struct LegalDocumentScreen: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding()
         }
+        .collectionsListBottomInset()
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
     }
