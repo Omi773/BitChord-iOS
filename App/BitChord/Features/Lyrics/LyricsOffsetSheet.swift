@@ -108,7 +108,7 @@ struct LyricsOffsetSheet: View {
         .frame(maxWidth: 640)
         .environment(\.colorScheme, .dark)
         .presentationDragIndicator(.visible)
-        .presentationBackground { PlayerDrawerBackground() }
+        .glassSheetBackground { PlayerDrawerBackground() }
         // A container: without this the identifier lands on every child and hides theirs.
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("lyrics.offsetSheet")

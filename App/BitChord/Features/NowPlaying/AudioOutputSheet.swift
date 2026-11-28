@@ -43,11 +43,11 @@ struct AudioOutputSheet: View {
             .padding(.bottom, 20)
         }
         .presentationDragIndicator(.visible)
-        .presentationCornerRadius(26)
+        .glassSheetCornerRadius(26)
         .sheet(item: $pipeline) { snapshot in
             AudioPipelineSheet(pipeline: snapshot.pipeline, isPlaying: isPlaying)
                 .presentationDetents([.large])
-                .presentationBackground(.ultraThinMaterial)
+                .glassSheetBackground(.ultraThinMaterial)
                 // White-on-material like the sheet it opens from, whatever the system appearance.
                 .preferredColorScheme(.dark)
         }

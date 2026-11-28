@@ -133,7 +133,7 @@ struct TranslationLanguageSheet: View {
                 .accessibilityIdentifier("translationLanguage.done")
         }
         .presentationDetents([.large])
-        .presentationBackground(.regularMaterial)
+        .glassSheetBackground(.regularMaterial)
         .onChange(of: LanguageBundle.locale.identifier) { _, _ in
             choices = TranslationLanguageChoices(locale: LanguageBundle.locale)
         }

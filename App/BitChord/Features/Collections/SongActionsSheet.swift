@@ -55,7 +55,7 @@ struct SongActionsSheet: View {
                 .padding(.bottom, 24)
             }
             .scrollBounceBehavior(.basedOnSize)
-            .presentationBackground { TintedSheetBackground(artwork: song.thumbnailUrl, palette: palette) }
+            .glassSheetBackground { TintedSheetBackground(artwork: song.thumbnailUrl, palette: palette) }
             .presentationDragIndicator(.visible)
             .tint(palette.accentColor)
         }

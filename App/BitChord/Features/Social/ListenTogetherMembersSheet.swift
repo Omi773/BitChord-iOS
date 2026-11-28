@@ -62,7 +62,7 @@ struct PartyMembersDrawer: View {
         .padding(.top, 24)
         .padding(.bottom, 16)
         .fittedSheet()
-        .presentationBackground(.ultraThinMaterial)
+        .glassSheetBackground(.ultraThinMaterial)
         .environment(\.colorScheme, .dark)
     }
 

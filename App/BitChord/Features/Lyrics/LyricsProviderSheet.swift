@@ -91,7 +91,7 @@ struct LyricsProviderSheet: View {
         .frame(maxWidth: 640)
         .environment(\.colorScheme, .dark)
         .presentationDragIndicator(.visible)
-        .presentationBackground { PlayerDrawerBackground() }
+        .glassSheetBackground { PlayerDrawerBackground() }
         .onChange(of: session.source) { _, source in
             if let requested, source == requested { dismiss() }
         }

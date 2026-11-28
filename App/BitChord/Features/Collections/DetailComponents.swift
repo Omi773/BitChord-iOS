@@ -28,12 +28,13 @@ func detailArtHeight(size: CGSize, isArtist: Bool) -> CGFloat {
     return min(size.width / ratio, size.height * 0.6)
 }
 
-/// The track list's bottom inset, so the last rows scroll clear of the tab bar and the mini
-/// player (MainActivity's `listPadding.bottom`: 210 dp with something playing, 140 dp without).
-/// The scroll view's own safe-area inset already covers what the system reports it covers; the
-/// rest of Android's inset is added on top of it.
+/// The track list's bottom inset. The scroll view's own safe-area inset already covers the tab bar
+/// and the mini player (the system's accessory on iOS 26, the floating bar before it), so the last
+/// row only needs a little breathing room above them. Android's 210 dp / 140 dp padding stacked
+/// on top of that left a blank band under the last row (Settings' version line sat far above the
+/// player).
 func detailBottomInset(bottomInset: CGFloat, isPlaying: Bool) -> CGFloat {
-    max(0, (isPlaying ? 210 : 140) - bottomInset)
+    12
 }
 
 /// `detailBottomInset` for a page that isn't laid out in a GeometryReader of its own (the Library,

@@ -184,12 +184,12 @@ struct NowPlayingScreen: View {
                 isPlaying: player.isPlaying
             )
             .presentationDetents([.medium, .large])
-            .presentationBackground(.ultraThinMaterial)
+            .glassSheetBackground(.ultraThinMaterial)
             .preferredColorScheme(.dark)
         case .pipeline:
             AudioPipelineSheet(pipeline: AudioPipelineSheet.build(player: player, settings: settings), isPlaying: player.isPlaying)
                 .presentationDetents([.large])
-                .presentationBackground(.ultraThinMaterial)
+                .glassSheetBackground(.ultraThinMaterial)
                 .preferredColorScheme(.dark)
         case .songActions:
             if let song = player.currentSong {
