@@ -76,6 +76,16 @@ struct SettingsScreen: View {
                 // narrowed to a few rows.
                 if search.isBlank {
                     Section {
+                        NavigationLink {
+                            LegalScreen()
+                        } label: {
+                            Label("About & legal", systemImage: "info.circle")
+                        }
+                    } footer: {
+                        Text("Licence, Privacy Policy, Terms of Use and contact. \u{00A9} 2026 Omi Shikder.")
+                    }
+
+                    Section {
                         SettingsColophon()
                             .listRowBackground(Color.clear)
                     }
@@ -568,10 +578,9 @@ private struct SettingsColophon: View {
 
     private static var text: AttributedString {
         let links: [(String, String)] = [
-            ("GitHub", "https://github.com/kushagrasinghx/BitChord"),
-            ("Developer", "https://github.com/kushagrasinghx"),
-            ("Discord", "https://discord.gg/pDdKfrdHY6"),
-            ("Website", "https://bitchord.kushagrasingh.in/"),
+            ("GitHub", "https://github.com/Omi773/BitChord-iOS"),
+            ("Developer", "https://github.com/Omi773"),
+            ("Upstream", "https://github.com/kushagrasinghx/BitChord"),
         ]
         var result = AttributedString("bitchord \(SettingsBackup.appVersion)")
         for (label, url) in links {

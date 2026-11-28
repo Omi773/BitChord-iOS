@@ -11,7 +11,7 @@
 <br/>
 
 [![Version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fbitchord.hero154.com%2Fsource.json&query=%24.apps%5B0%5D.versions%5B0%5D.version&label=version&style=for-the-badge&labelColor=0d1117&color=e5404f)](#install)
-[![License](https://img.shields.io/github/license/maanya145/BitChord-iOS?style=for-the-badge&labelColor=0d1117)](LICENSE)
+[![License](https://img.shields.io/github/license/Omi773/BitChord-iOS?style=for-the-badge&labelColor=0d1117)](LICENSE)
 [![Platform](https://img.shields.io/badge/iOS-17%2B-0d1117?style=for-the-badge)](#requirements)
 
 <br/>
@@ -114,7 +114,7 @@ To update, install the new version over the old one. Downloads, library and sett
 ### Open the project
 
 ```sh
-git clone https://github.com/maanya145/BitChord-iOS.git bitchord-ios
+git clone https://github.com/Omi773/BitChord-iOS.git bitchord-ios
 cd bitchord-ios
 open BitChord.xcworkspace
 ```
@@ -206,6 +206,16 @@ docs/PORTING.md           feature checklist and porting decisions
 ```
 
 The top of `BitChordKit/Package.swift` lists the Android source each module ports. Android paths in code comments are relative to `app/src/main/java/com/music/bitchord/` in the [upstream repository](https://github.com/kushagrasinghx/BitChord).
+
+## Licence, privacy and contact
+
+BitChord for iOS (this fork) is maintained by [Omi Shikder](https://github.com/Omi773) and is free software under the [GNU General Public License v3.0](LICENSE). The upstream copyright and credits are kept in [NOTICE.md](NOTICE.md) and [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
+- [Privacy Policy](PRIVACY.md)
+- [Terms of Use](TERMS.md)
+- [Contact](CONTACT.md): [omishikdr@gmail.com](mailto:omishikdr@gmail.com)
+
+The same pages are in the app under Settings > About & legal.
 
 ## Contributing
 
