@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Add BitChord to SideStore</title>
+<style>
+  :root { color-scheme: light dark; --bg:#fff; --fg:#111; --muted:#666; --card:#f4f4f5; --accent:#e5404f; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0d1117; --fg:#f0f3f6; --muted:#9aa4af; --card:#161b22; } }
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; background:var(--bg); color:var(--fg); font:16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { max-width:420px; padding:32px 24px; text-align:center; }
+  img { width:96px; height:96px; border-radius:22px; }
+  h1 { margin:16px 0 4px; font-size:24px; }
+  p { color:var(--muted); margin:8px 0 20px; }
+  a.button, button { display:block; width:100%; box-sizing:border-box; padding:14px 18px; margin:10px 0; border:0; border-radius:14px; background:var(--accent); color:#fff; font:600 17px inherit; font-family:inherit; text-decoration:none; cursor:pointer; }
+  button.secondary { background:var(--card); color:var(--fg); }
+  code { display:block; margin-top:16px; padding:10px 12px; border-radius:10px; background:var(--card); color:var(--muted); font-size:12px; word-break:break-all; user-select:all; }
+</style>
+</head>
+<body>
+<main>
+  <img src="https://raw.githubusercontent.com/Omi773/BitChord-iOS/main/.github/assets/icon.png" alt="BitChord icon">
+  <h1>BitChord</h1>
+  <p>Opening SideStore to add the BitChord source. If nothing happens, tap the button.</p>
+  <a class="button" id="open" href="sidestore://source?url=https://raw.githubusercontent.com/Omi773/BitChord-iOS/refs/heads/main/source.json">Add to SideStore</a>
+  <button class="secondary" id="copy" type="button">Copy source URL</button>
+  <code id="url">https://raw.githubusercontent.com/Omi773/BitChord-iOS/refs/heads/main/source.json</code>
+</main>
+<script>
+  var url = document.getElementById('url').textContent;
+  document.getElementById('copy').addEventListener('click', function () {
+    var done = function () { document.getElementById('copy').textContent = 'Copied'; };
+    if (navigator.clipboard) { navigator.clipboard.writeText(url).then(done, function () {}); }
+  });
+  setTimeout(function () { location.href = document.getElementById('open').href; }, 400);
+</script>
+</body>
+</html>
