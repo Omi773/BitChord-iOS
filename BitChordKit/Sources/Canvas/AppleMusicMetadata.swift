@@ -132,7 +132,7 @@ public final class AppleMusicMetadata: Sendable {
             ("term", term), ("types", "songs"), ("limit", "10"), ("include", "albums"),
         ]) else { return .unavailable }
 
-        let (status, body) = await http.getWithStatus(url, headers: AppleMusicCanvas.authHeaders(bearer: bearer))
+        let (status, body) = await fetch(url, bearer: bearer)
         if status == 401 {
             await tokens.noteRejection(bearer)
             return .unavailable
@@ -164,8 +164,7 @@ public final class AppleMusicMetadata: Sendable {
         if details.credits.recordLabel == nil, let albumId = AppleMusicCanvas.albumID(best.hit),
            let albumURL = CanvasURL.make(AppleMusicCanvas.catalog + "/\(storefront)/albums/\(albumId)", [])
         {
-            let (albumStatus, albumBody) = await http.getWithStatus(
-                albumURL, headers: AppleMusicCanvas.authHeaders(bearer: bearer))
+            let (albumStatus, albumBody) = await fetch(albumURL, bearer: bearer)
             if albumStatus == 200, let albumBody,
                let album = CanvasJSON.parse(albumBody)?.object?["data"]?.array?.first?.object?["attributes"]?.object
             {
@@ -177,6 +176,19 @@ public final class AppleMusicMetadata: Sendable {
         let match = AppleMatch.matched(details)
         await cache.put(song.videoId, match)
         return match
+    }
+
+    /// One GET, retried once after a short pause when Apple is busy (429), failing (5xx) or the
+    /// connection dropped (-1).
+    private func fetch(_ url: URL, bearer: String) async -> (Int, String?) {
+        let headers = AppleMusicCanvas.authHeaders(bearer: bearer)
+        var attempt = await http.getWithStatus(url, headers: headers)
+        if attempt.0 == 429 || attempt.0 >= 500 || attempt.0 == -1 {
+            try? await Task.sleep(for: .milliseconds(500))
+            if Task.isCancelled { return attempt }
+            attempt = await http.getWithStatus(url, headers: headers)
+        }
+        return attempt
     }
 
     static func runtimeAgrees(_ hit: [String: CanvasJSON], song: Song) -> Bool {
@@ -251,17 +263,32 @@ enum AppleMatch: Sendable {
 }
 
 /// What Apple said about a row, per video id, so scrolling back or searching again doesn't ask
-/// twice. Only definite answers are kept.
+/// twice. Only definite answers are kept, and a "no match" expires after a few minutes so one
+/// odd answer can't hide a song for the rest of the session.
 actor AppleMetadataCache {
-    private var entries: [String: AppleMatch] = [:]
+    private struct Entry {
+        let match: AppleMatch
+        let at: Date
+    }
+
+    private var entries: [String: Entry] = [:]
     private var order: [String] = []
     private let capacity = 800
+    private let noMatchLifetime: TimeInterval = 5 * 60
 
-    func get(_ key: String) -> AppleMatch? { entries[key] }
+    func get(_ key: String) -> AppleMatch? {
+        guard let entry = entries[key] else { return nil }
+        if case .noMatch = entry.match, Date().timeIntervalSince(entry.at) > noMatchLifetime {
+            entries[key] = nil
+            order.removeAll { $0 == key }
+            return nil
+        }
+        return entry.match
+    }
 
     func put(_ key: String, _ value: AppleMatch) {
         if entries[key] == nil { order.append(key) }
-        entries[key] = value
+        entries[key] = Entry(match: value, at: Date())
         if order.count > capacity {
             let oldest = order.removeFirst()
             entries[oldest] = nil
