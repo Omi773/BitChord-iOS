@@ -107,7 +107,11 @@ public final class DownloadLibrary {
 
     /// The app's library, in `Application Support/BitChord/Downloads`.
     public static func live() -> DownloadLibrary {
-        DownloadLibrary(store: .applicationSupport())
+        let store = DownloadStore.applicationSupport()
+        // Tracks an earlier build kept in hidden app storage move to the Music folder first, so the
+        // library never opens with records that name files which have not moved yet.
+        store.moveLegacyTracks()
+        return DownloadLibrary(store: store)
     }
 
     // MARK: Asking

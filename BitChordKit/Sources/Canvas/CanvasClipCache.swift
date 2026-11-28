@@ -42,20 +42,29 @@ public final class CanvasClipCache: Sendable {
     private let lock = NSLock()
 
     /// - Parameters:
-    ///   - directory: where clips live; created on init. The app passes a
-    ///     `caches/com.music.bitchord/canvas` folder (excluded from backup and purged by the
-    ///     system under pressure, which is exactly the semantics wanted here).
+    ///   - directory: where clips live; created on init. The app passes `Documents/AnimatedArt`
+    ///     (BitChord > AnimatedArt in the Files app): clips sit in a folder for each album and
+    ///     stay until the size limit pushes the least used out.
     ///   - limitBytes: eviction target; the oldest clips go once the total passes it.
     public init(directory: URL, limitBytes: Int64 = defaultLimitBytes) {
         self.directory = directory
         self.limitBytes = limitBytes
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        // Every clip can be fetched again, so none of them needs to go to an iCloud backup.
+        var folder = directory
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try? folder.setResourceValues(values)
     }
 
-    /// The on-disk copy of `remoteURL`'s clip, or nil when it isn't cached yet.
-    public func localFile(for remoteURL: URL) -> URL? {
-        let file = fileURL(for: remoteURL)
-        guard FileManager.default.fileExists(atPath: file.path(percentEncoded: false)) else { return nil }
+    /// The folder a clip is filed under when no album is known for it.
+    public static let unknownAlbumFolder = "Unknown Album"
+
+    /// The on-disk copy of `remoteURL`'s clip, or nil when it isn't cached yet. `album` says which
+    /// folder to look in first; the other album folders are searched after it, because a track's
+    /// album can be learnt after its clip was first saved.
+    public func localFile(for remoteURL: URL, album: String? = nil) -> URL? {
+        guard let file = existingFile(for: remoteURL, album: album) else { return nil }
         // A hit is a use: keep the clip being looped out of the next eviction.
         try? FileManager.default.setAttributes([.modificationDate: Date()],
                                                ofItemAtPath: file.path(percentEncoded: false))
@@ -71,9 +80,12 @@ public final class CanvasClipCache: Sendable {
     /// is swallowed: callers fall back to streaming the remote URL rather than surfacing a
     /// playback error.
     @discardableResult
-    public func store(_ data: Data, for remoteURL: URL) -> URL? {
-        let file = fileURL(for: remoteURL)
+    public func store(_ data: Data, for remoteURL: URL, album: String? = nil) -> URL? {
+        // A copy already filed under another album folder is replaced where it is, never doubled.
+        let file = existingFile(for: remoteURL, album: album) ?? fileURL(for: remoteURL, album: album)
         do {
+            try FileManager.default.createDirectory(
+                at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
             try data.write(to: file, options: .atomic)
             evictIfNeeded()
             return file
@@ -96,13 +108,13 @@ public final class CanvasClipCache: Sendable {
         if primary.isCanvasHLS {
             // Joined into one local file before (see `fetchLocalClip`): plays from disk, so it
             // plays with no connection too. Otherwise the stream, as always.
-            return localFile(for: primary.appendingPathExtension("mp4")) ?? primary
+            return localFile(for: primary.appendingPathExtension("mp4"), album: artwork.album) ?? primary
         }
-        if let cached = localFile(for: primary) { return cached }
+        if let cached = localFile(for: primary, album: artwork.album) { return cached }
         do {
             let (data, response) = try await session.data(from: primary)
             let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-            if status / 100 == 2, !data.isEmpty, let stored = store(data, for: primary) {
+            if status / 100 == 2, !data.isEmpty, let stored = store(data, for: primary, album: artwork.album) {
                 return stored
             }
         } catch {
@@ -123,11 +135,12 @@ public final class CanvasClipCache: Sendable {
         for url in artwork.playbackURLs where !Task.isCancelled {
             if url.isCanvasHLS {
                 let key = url.appendingPathExtension("mp4")
-                if let cached = localFile(for: key) { return cached }
+                if let cached = localFile(for: key, album: artwork.album) { return cached }
                 if let data = await HLSClipAssembler.assemble(master: url, session: session),
-                   let stored = store(data, for: key) { return stored }
+                   let stored = store(data, for: key, album: artwork.album) { return stored }
             } else {
-                let served = await fetchClip(for: CanvasArtwork(url: url.absoluteString), session: session)
+                let served = await fetchClip(
+                    for: CanvasArtwork(url: url.absoluteString, album: artwork.album), session: session)
                 if served.isFileURL { return served }
             }
         }
@@ -138,7 +151,8 @@ public final class CanvasClipCache: Sendable {
     /// clip is on disk.
     public func cachedLocalClip(for artwork: CanvasArtwork) -> URL? {
         for url in artwork.playbackURLs {
-            if let cached = localFile(for: url.isCanvasHLS ? url.appendingPathExtension("mp4") : url) { return cached }
+            if let cached = localFile(for: url.isCanvasHLS ? url.appendingPathExtension("mp4") : url,
+                                      album: artwork.album) { return cached }
         }
         return nil
     }
@@ -173,7 +187,8 @@ public final class CanvasClipCache: Sendable {
         let saved = lock.withLock { readSavedTracks() }
         guard let artwork = saved.first(where: { $0.key == key })?.artwork,
               let primary = artwork.playbackURLs.first,
-              localFile(for: primary.isCanvasHLS ? primary.appendingPathExtension("mp4") : primary) != nil
+              localFile(for: primary.isCanvasHLS ? primary.appendingPathExtension("mp4") : primary,
+                        album: artwork.album) != nil
         else { return nil }
         return artwork
     }
@@ -200,9 +215,10 @@ public final class CanvasClipCache: Sendable {
     /// Drops every cached clip, and the record of whose they were.
     public func clear() {
         lock.withLock {
-            for name in fileNames() {
-                try? FileManager.default.removeItem(at: directory.appending(path: name))
+            for file in clipFiles() {
+                try? FileManager.default.removeItem(at: file)
             }
+            removeEmptyAlbumFolders()
             try? FileManager.default.removeItem(at: savedTracksFile)
         }
     }
@@ -214,16 +230,85 @@ public final class CanvasClipCache: Sendable {
 
     // MARK: - Internals
 
-    func fileURL(for remoteURL: URL) -> URL {
+    /// The file name a clip has, whichever album folder it sits in.
+    private func fileName(for remoteURL: URL) -> String {
         let digest = SHA256.hash(data: Data(remoteURL.absoluteString.utf8))
         let name = digest.map { String(format: "%02x", $0) }.joined()
         let suffix = remoteURL.pathExtension.lowercased() == "mp4" ? "mp4" : "clip"
-        return directory.appending(path: "\(name).\(suffix)")
+        return "\(name).\(suffix)"
     }
 
-    private func fileNames() -> [String] {
-        let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path(percentEncoded: false))) ?? []
-        return names.filter { $0 != Self.savedTracksFileName }
+    /// Where a clip is filed: in its album's folder, one folder per album however many songs it
+    /// holds, or in ``unknownAlbumFolder`` when no album is known.
+    func fileURL(for remoteURL: URL, album: String? = nil) -> URL {
+        directory
+            .appending(path: Self.folderName(forAlbum: album), directoryHint: .isDirectory)
+            .appending(path: fileName(for: remoteURL), directoryHint: .notDirectory)
+    }
+
+    /// An album's folder name: what a file system accepts, so the folder reads as the album in Files.
+    static func folderName(forAlbum album: String?) -> String {
+        var text = (album ?? "").replacingOccurrences(
+            of: #"[\\/:*?"<>|\x00-\x1F]"#, with: " ", options: .regularExpression)
+        text = text.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+        text = text.trimmingCharacters(in: .whitespaces)
+        text = text.trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        if text.isEmpty { return unknownAlbumFolder }
+        return String(text.prefix(100)).trimmingCharacters(in: .whitespaces)
+    }
+
+    /// The clip's file where it is now: in `album`'s folder if it is there, else in whichever album
+    /// folder holds it, else in a file left loose in the clips folder by an earlier build. Not a use.
+    private func existingFile(for remoteURL: URL, album: String?) -> URL? {
+        let manager = FileManager.default
+        let preferred = fileURL(for: remoteURL, album: album)
+        if manager.fileExists(atPath: preferred.path(percentEncoded: false)) { return preferred }
+        let name = fileName(for: remoteURL)
+        let loose = directory.appending(path: name, directoryHint: .notDirectory)
+        if manager.fileExists(atPath: loose.path(percentEncoded: false)) { return loose }
+        let folders = (try? manager.contentsOfDirectory(atPath: directory.path(percentEncoded: false))) ?? []
+        for folder in folders {
+            let candidate = directory
+                .appending(path: folder, directoryHint: .isDirectory)
+                .appending(path: name, directoryHint: .notDirectory)
+            if manager.fileExists(atPath: candidate.path(percentEncoded: false)) { return candidate }
+        }
+        return nil
+    }
+
+    /// Every clip file, in the album folders and loose in the clips folder, never the record of
+    /// which clip is whose.
+    private func clipFiles() -> [URL] {
+        let manager = FileManager.default
+        var files: [URL] = []
+        let entries = (try? manager.contentsOfDirectory(atPath: directory.path(percentEncoded: false))) ?? []
+        for entry in entries where entry != Self.savedTracksFileName {
+            let url = directory.appending(path: entry)
+            var isFolder: ObjCBool = false
+            guard manager.fileExists(atPath: url.path(percentEncoded: false), isDirectory: &isFolder) else { continue }
+            if isFolder.boolValue {
+                let inside = (try? manager.contentsOfDirectory(atPath: url.path(percentEncoded: false))) ?? []
+                files.append(contentsOf: inside.map { url.appending(path: $0, directoryHint: .notDirectory) })
+            } else {
+                files.append(url)
+            }
+        }
+        return files
+    }
+
+    /// Takes away album folders with nothing left in them, so Files shows no empty albums.
+    private func removeEmptyAlbumFolders() {
+        let manager = FileManager.default
+        let entries = (try? manager.contentsOfDirectory(atPath: directory.path(percentEncoded: false))) ?? []
+        for entry in entries {
+            let url = directory.appending(path: entry, directoryHint: .isDirectory)
+            var isFolder: ObjCBool = false
+            guard manager.fileExists(atPath: url.path(percentEncoded: false), isDirectory: &isFolder),
+                  isFolder.boolValue,
+                  let inside = try? manager.contentsOfDirectory(atPath: url.path(percentEncoded: false)),
+                  inside.isEmpty else { continue }
+            try? manager.removeItem(at: url)
+        }
     }
 
     private struct SavedTrack: Codable {
@@ -250,8 +335,8 @@ public final class CanvasClipCache: Sendable {
     /// Whether the primary clip's file exists, without counting as a use.
     private func hasPrimaryClipOnDisk(_ artwork: CanvasArtwork) -> Bool {
         guard let primary = artwork.playbackURLs.first else { return false }
-        let file = fileURL(for: primary.isCanvasHLS ? primary.appendingPathExtension("mp4") : primary)
-        return FileManager.default.fileExists(atPath: file.path(percentEncoded: false))
+        return existingFile(for: primary.isCanvasHLS ? primary.appendingPathExtension("mp4") : primary,
+                            album: artwork.album) != nil
     }
 
     private func fileSize(_ url: URL) -> Int64 {
@@ -263,15 +348,15 @@ public final class CanvasClipCache: Sendable {
     }
 
     private func totalBytes() -> Int64 {
-        fileNames().reduce(0) { total, name in
-            total + fileSize(directory.appending(path: name))
+        clipFiles().reduce(0) { total, file in
+            total + fileSize(file)
         }
     }
 
     private func evictIfNeeded() {
         lock.withLock {
             guard totalBytes() > limitBytes else { return }
-            let files = fileNames().map { directory.appending(path: $0) }
+            let files = clipFiles()
             let byAge = files.sorted {
                 modificationDate($0) ?? .distantPast < modificationDate($1) ?? .distantPast
             }
@@ -281,6 +366,7 @@ public final class CanvasClipCache: Sendable {
                 let size = fileSize(file)
                 if (try? FileManager.default.removeItem(at: file)) != nil { total -= size }
             }
+            removeEmptyAlbumFolders()
         }
     }
 

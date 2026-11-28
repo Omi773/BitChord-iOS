@@ -201,7 +201,7 @@ final class CurrentTrackCanvas {
         if let skip = tallSkip() {
             tallNote = skip
         } else if let tallUrl = canvas.tallUrl {
-            let (tall, note) = await localClip(CanvasArtwork(url: tallUrl), song: song, for: tag)
+            let (tall, note) = await localClip(CanvasArtwork(url: tallUrl, album: canvas.album), song: song, for: tag)
             guard stillWanted(tag) else { return }
             tallNote = note
             if let tall {

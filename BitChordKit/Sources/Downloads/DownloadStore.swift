@@ -27,16 +27,27 @@ import BitChordCore
 public struct DownloadStore: Sendable {
     public let root: URL
 
+    /// Where finished tracks live when they are kept outside ``root`` (the app: `Documents/Music`,
+    /// which the Files app shows as BitChord > Music). Nil keeps them in `root/Tracks`, as the
+    /// tests do. Records still say `Tracks/Name.ext` either way, so a library written before the
+    /// move keeps working.
+    private let musicOverride: URL?
+
     /// `root` is used as given (tests pass a temporary directory).
-    public init(root: URL) {
+    public init(root: URL, musicDirectory: URL? = nil) {
         self.root = root
+        self.musicOverride = musicDirectory
     }
 
-    /// The app's store: `Application Support/BitChord/Downloads`.
+    /// The app's store: records and covers in `Application Support/BitChord/Downloads`, finished
+    /// tracks in `Documents/Music` so they show in the Files app.
     public static func applicationSupport() -> DownloadStore {
-        DownloadStore(root: URL.applicationSupportDirectory
-            .appending(path: "BitChord", directoryHint: .isDirectory)
-            .appending(path: "Downloads", directoryHint: .isDirectory))
+        DownloadStore(
+            root: URL.applicationSupportDirectory
+                .appending(path: "BitChord", directoryHint: .isDirectory)
+                .appending(path: "Downloads", directoryHint: .isDirectory),
+            musicDirectory: URL.documentsDirectory
+                .appending(path: "Music", directoryHint: .isDirectory))
     }
 
     public static let tracksFolder = "Tracks"
@@ -44,7 +55,7 @@ public struct DownloadStore: Sendable {
     public static let artworkFolder = "Artwork"
     public static let stagingFolder = "Staging"
 
-    public var tracksDirectory: URL { directory(Self.tracksFolder) }
+    public var tracksDirectory: URL { musicOverride ?? directory(Self.tracksFolder) }
     public var importedDirectory: URL { directory(Self.importedFolder) }
     public var artworkDirectory: URL { directory(Self.artworkFolder) }
     public var stagingDirectory: URL { directory(Self.stagingFolder) }
@@ -59,9 +70,10 @@ public struct DownloadStore: Sendable {
     /// Creates the folders and marks the re-fetchable ones as excluded from backup. Idempotent.
     public func prepare() throws {
         let fileManager = FileManager.default
-        for (name, excluded) in [(Self.tracksFolder, true), (Self.importedFolder, false),
-                                 (Self.artworkFolder, true), (Self.stagingFolder, true)] {
-            var url = directory(name)
+        let folders: [(URL, Bool)] = [(tracksDirectory, true), (importedDirectory, false),
+                                      (artworkDirectory, true), (stagingDirectory, true)]
+        for (folder, excluded) in folders {
+            var url = folder
             try fileManager.createDirectory(at: url, withIntermediateDirectories: true)
             var values = URLResourceValues()
             values.isExcludedFromBackup = excluded
@@ -69,17 +81,56 @@ public struct DownloadStore: Sendable {
         }
     }
 
+    /// Moves what an earlier build saved in `root/Tracks` (hidden app storage) into the Music folder,
+    /// part files included, so a download in progress carries on and nothing saved is lost. A name
+    /// already taken in the Music folder is left where it is. Does nothing for a store that keeps its
+    /// tracks in `root/Tracks`, or when there is nothing to move. Cheap enough to call at every launch.
+    public func moveLegacyTracks() {
+        guard musicOverride != nil else { return }
+        let fileManager = FileManager.default
+        let old = directory(Self.tracksFolder)
+        guard let names = try? fileManager.contentsOfDirectory(atPath: old.path(percentEncoded: false)),
+              !names.isEmpty else { return }
+        do {
+            try prepare()
+        } catch {
+            DebugLog.w("Downloads", "could not prepare the Music folder", error: error)
+            return
+        }
+        for name in names {
+            let from = old.appending(path: name, directoryHint: .notDirectory)
+            let to = tracksDirectory.appending(path: name, directoryHint: .notDirectory)
+            if fileManager.fileExists(atPath: to.path(percentEncoded: false)) { continue }
+            do {
+                try fileManager.moveItem(at: from, to: to)
+            } catch {
+                DebugLog.w("Downloads", "could not move \(name) to the Music folder", error: error)
+            }
+        }
+    }
+
     // MARK: Paths
 
     /// The absolute URL of a path recorded relative to ``root``.
     public func url(forRelativePath path: String) -> URL {
-        root.appending(path: path, directoryHint: .notDirectory)
+        let tracksPrefix = Self.tracksFolder + "/"
+        if let music = musicOverride, path.hasPrefix(tracksPrefix) {
+            return music.appending(path: String(path.dropFirst(tracksPrefix.count)), directoryHint: .notDirectory)
+        }
+        return root.appending(path: path, directoryHint: .notDirectory)
     }
 
     /// `url` relative to ``root``, or nil when it lies outside it.
     public func relativePath(of url: URL) -> String? {
-        let base = root.standardizedFileURL.path(percentEncoded: false)
         let full = url.standardizedFileURL.path(percentEncoded: false)
+        if let music = musicOverride {
+            let musicBase = music.standardizedFileURL.path(percentEncoded: false)
+            let musicPrefix = musicBase.hasSuffix("/") ? musicBase : musicBase + "/"
+            if full.hasPrefix(musicPrefix) {
+                return Self.tracksFolder + "/" + String(full.dropFirst(musicPrefix.count))
+            }
+        }
+        let base = root.standardizedFileURL.path(percentEncoded: false)
         let prefix = base.hasSuffix("/") ? base : base + "/"
         guard full.hasPrefix(prefix) else { return nil }
         return String(full.dropFirst(prefix.count))

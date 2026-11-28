@@ -46,7 +46,7 @@ enum VersionUpdateWipe {
             AudioStreamCache.legacyDirectory,
             AudioCacheRenditions.defaultLinkDirectory,
             ArtworkImageCache.defaultDirectory,
-            PlayerCanvasClips.directory,
+            PlayerCanvasClips.legacyDirectory,
             RemoteCoverLoader.sharedDirectory,
         ]
     }

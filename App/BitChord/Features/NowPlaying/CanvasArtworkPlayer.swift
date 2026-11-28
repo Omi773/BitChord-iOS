@@ -109,8 +109,14 @@ final class PlayerCanvasModel {
 
 /// Clips downloaded once and looped from disk: a five-second clip behind a four-minute track loops
 /// fifty times, and every loop re-downloading it was Android's "40 MB for one song".
+///
+/// Kept in the Files app, under BitChord > AnimatedArt with a folder for each album, so they stay
+/// on the phone for offline play and an app update never clears them. (They used to sit in
+/// `Library/Caches`, which iOS may empty and which the update wipe cleared.)
 enum PlayerCanvasClips {
-    static let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+    static let directory = URL.documentsDirectory.appending(path: "AnimatedArt", directoryHint: .isDirectory)
+    /// Where earlier builds kept them: still cleared by the update wipe, so nothing is left behind.
+    static let legacyDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         .appending(path: "com.music.bitchord/canvas", directoryHint: .isDirectory)
     static let cache = CanvasClipCache(directory: directory)
 }

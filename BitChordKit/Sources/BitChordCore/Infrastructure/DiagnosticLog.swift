@@ -1,7 +1,8 @@
 import Foundation
 
 /// The log file on the device: every ``TrackLog`` line and every ``DebugLog`` line, at all four
-/// levels and in release builds too, appended to `Library/Application Support/Logs/bitchord.log`.
+/// levels and in release builds too, appended to `Documents/Diagnostics/bitchord.log`, which the
+/// Files app shows as BitChord > Diagnostics.
 ///
 /// The in-memory ``TrackLog`` dies with the app and the system log is nearly empty in a Release
 /// build, so a crash or a bad session left nothing to read. This file survives both, and can be
@@ -24,9 +25,9 @@ public final class DiagnosticLog: @unchecked Sendable {
     public static let fileName = "bitchord.log"
     public static let rotatedFileName = "bitchord.1.log"
 
-    /// `Library/Application Support/Logs`.
+    /// `Documents/Diagnostics`.
     public static var standardDirectory: URL {
-        URL.applicationSupportDirectory.appending(path: "Logs", directoryHint: .isDirectory)
+        URL.documentsDirectory.appending(path: "Diagnostics", directoryHint: .isDirectory)
     }
 
     /// Enough for a stack trace or a response's opening; the same cap ``TrackLog`` applies.
