@@ -16,14 +16,26 @@ import Foundation
 /// answers the on-disk copy when there is one, and `fetchClip(from:)` downloads through
 /// `URLSession` (a plain progressive MP4) before handing the local file to the player.
 ///
-/// For the player, only progressive clips are cached. Apple serves HLS playlists, which are a
-/// directory of segments rather than one file — `fetchClip` hands those straight to `AVPlayer`
-/// and lets its own segment handling do the work. `fetchLocalClip` is the exception: the lock
-/// screen takes only a file, so it joins the HLS clip into one.
+/// For the player, progressive clips are cached as they are. Apple serves HLS playlists, which
+/// are a directory of segments rather than one file — `fetchClip` hands those straight to
+/// `AVPlayer` unless they were already joined into one local file, which `fetchLocalClip` does
+/// (the lock screen takes only a file) and which then plays from disk like the rest.
+///
+/// Offline: the cache also remembers which clip belongs to which track (`remember(_:forTrack:)`),
+/// because the lookup that finds a track's clip needs the network and the clip files alone
+/// don't say whose they are. With that record a track's clip plays with no connection at all.
+/// What is used least is dropped first: a read marks a clip recently used, and the oldest go
+/// once the total passes the limit.
 public final class CanvasClipCache: Sendable {
     /// Small on purpose — a clip is a few seconds of video, not a song, and this only needs
     /// to outlive one player screen's worth of looping, not a library.
     public static let defaultLimitBytes: Int64 = 150 * 1024 * 1024
+
+    /// The record of which clip belongs to which track, kept in the clips' own folder so a wipe
+    /// of the folder takes both. Never counted as a clip, never evicted as one.
+    static let savedTracksFileName = "saved-tracks.json"
+    /// Tracks remembered at most; past it, tracks whose clip is gone go first, then the oldest.
+    static let savedTrackLimit = 300
 
     private let directory: URL
     private let limitBytes: Int64
@@ -81,7 +93,11 @@ public final class CanvasClipCache: Sendable {
         guard let primary = candidates.first else {
             return URL(string: "about:blank")!
         }
-        if primary.isCanvasHLS { return primary }
+        if primary.isCanvasHLS {
+            // Joined into one local file before (see `fetchLocalClip`): plays from disk, so it
+            // plays with no connection too. Otherwise the stream, as always.
+            return localFile(for: primary.appendingPathExtension("mp4")) ?? primary
+        }
         if let cached = localFile(for: primary) { return cached }
         do {
             let (data, response) = try await session.data(from: primary)
@@ -127,12 +143,67 @@ public final class CanvasClipCache: Sendable {
         return nil
     }
 
-    /// Drops every cached clip.
+    /// Remembers that `artwork` is the clip for the track `key` names, so the clip can be found
+    /// again with no network. The clip's file arrives when the player or the lock screen
+    /// fetches it; `remembered(forTrack:)` only answers once it is on disk.
+    public func remember(_ artwork: CanvasArtwork, forTrack key: String) {
+        guard !key.isEmpty else { return }
+        lock.withLock {
+            var saved = readSavedTracks()
+            if let at = saved.firstIndex(where: { $0.key == key }) {
+                if saved[at].artwork == artwork { return }
+                saved.remove(at: at)
+            }
+            saved.append(SavedTrack(key: key, artwork: artwork))
+            if saved.count > Self.savedTrackLimit {
+                saved.removeAll { !hasPrimaryClipOnDisk($0.artwork) && $0.key != key }
+                if saved.count > Self.savedTrackLimit {
+                    saved.removeFirst(saved.count - Self.savedTrackLimit)
+                }
+            }
+            writeSavedTracks(saved)
+        }
+    }
+
+    /// The clip remembered for the track `key` names, only while its file is still on disk: a
+    /// clip that was dropped to make room (or never finished downloading) answers nil. Asking is
+    /// a use, so a track played offline keeps its clip out of the next eviction.
+    public func remembered(forTrack key: String) -> CanvasArtwork? {
+        guard !key.isEmpty else { return nil }
+        let saved = lock.withLock { readSavedTracks() }
+        guard let artwork = saved.first(where: { $0.key == key })?.artwork,
+              let primary = artwork.playbackURLs.first,
+              localFile(for: primary.isCanvasHLS ? primary.appendingPathExtension("mp4") : primary) != nil
+        else { return nil }
+        return artwork
+    }
+
+    /// Settles a track's canvas lookup against what is kept on disk. A clip found is remembered
+    /// for the track; with nothing found (no connection, or the services have none), the clip
+    /// remembered earlier answers instead, if its file is still here and it still answers to
+    /// what is playing. A file with no catalogue identity, or no title or artist, passes as is.
+    public func keeping(_ found: CanvasArtwork?, for song: Song) -> CanvasArtwork? {
+        if song.videoId.isBlankForCanvas, song.localUri != nil || song.localPath != nil { return found }
+        let title = CanvasText.cleanedTrackText(song.title)
+        let artist = CanvasText.cleanedTrackText(song.artist)
+        if title.isBlankForCanvas || artist.isBlankForCanvas { return found }
+        let key = "\(title.normalizedForCanvasMatch)|\(artist.normalizedForCanvasMatch)"
+        if let found {
+            remember(found, forTrack: key)
+            return found
+        }
+        guard let saved = remembered(forTrack: key),
+              saved.matches(title: title, artist: artist, album: song.albumName) else { return nil }
+        return saved
+    }
+
+    /// Drops every cached clip, and the record of whose they were.
     public func clear() {
         lock.withLock {
             for name in fileNames() {
                 try? FileManager.default.removeItem(at: directory.appending(path: name))
             }
+            try? FileManager.default.removeItem(at: savedTracksFile)
         }
     }
 
@@ -151,7 +222,36 @@ public final class CanvasClipCache: Sendable {
     }
 
     private func fileNames() -> [String] {
-        (try? FileManager.default.contentsOfDirectory(atPath: directory.path(percentEncoded: false))) ?? []
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path(percentEncoded: false))) ?? []
+        return names.filter { $0 != Self.savedTracksFileName }
+    }
+
+    private struct SavedTrack: Codable {
+        var key: String
+        var artwork: CanvasArtwork
+    }
+
+    private var savedTracksFile: URL {
+        directory.appending(path: Self.savedTracksFileName)
+    }
+
+    private func readSavedTracks() -> [SavedTrack] {
+        guard let data = try? Data(contentsOf: savedTracksFile),
+              let saved = try? JSONDecoder().decode([SavedTrack].self, from: data)
+        else { return [] }
+        return saved
+    }
+
+    private func writeSavedTracks(_ saved: [SavedTrack]) {
+        guard let data = try? JSONEncoder().encode(saved) else { return }
+        try? data.write(to: savedTracksFile, options: .atomic)
+    }
+
+    /// Whether the primary clip's file exists, without counting as a use.
+    private func hasPrimaryClipOnDisk(_ artwork: CanvasArtwork) -> Bool {
+        guard let primary = artwork.playbackURLs.first else { return false }
+        let file = fileURL(for: primary.isCanvasHLS ? primary.appendingPathExtension("mp4") : primary)
+        return FileManager.default.fileExists(atPath: file.path(percentEncoded: false))
     }
 
     private func fileSize(_ url: URL) -> Int64 {

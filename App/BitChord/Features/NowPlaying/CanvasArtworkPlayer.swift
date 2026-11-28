@@ -27,7 +27,8 @@ extension CanvasRepository: PlayerCanvasLookup {
     }
 
     func lookUpCanvas(for song: Song, spotifyFirst: Bool) async -> CanvasArtwork? {
-        await canvasFor(song, spotifyFirst: spotifyFirst)
+        // The clip kept on disk answers when the services can't (offline).
+        PlayerCanvasClips.cache.keeping(await canvasFor(song, spotifyFirst: spotifyFirst), for: song)
     }
 }
 
@@ -212,6 +213,12 @@ struct PlayerCanvasView: View {
             // A cancelled fetch still answers (with the remote URL); the next clip's task owns `source`.
             guard !Task.isCancelled else { return }
             source = fetched
+            // Apple's stream is no file, and before iOS 26 nothing else joins it (the lock screen
+            // does that from 26 on): joined behind the playing clip, it is on disk for the next
+            // play, offline included. Not tied to this view, so closing the player doesn't stop it.
+            if !fetched.isFileURL, canvas.isHLS, #unavailable(iOS 26.0) {
+                Task(priority: .utility) { _ = await PlayerCanvasClips.cache.fetchLocalClip(for: canvas) }
+            }
             // A clip this fetch brought down.
             if poster == nil { await showPoster() }
         }

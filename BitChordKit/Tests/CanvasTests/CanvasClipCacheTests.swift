@@ -1,3 +1,4 @@
+import BitChordCore
 import BitChordTestSupport
 import XCTest
 @testable import Canvas
@@ -159,5 +160,108 @@ final class CanvasClipCacheTests: XCTestCase {
         XCTAssertNil(cache.cachedLocalClip(for: hls))
         let joined = cache.store(Data([2]), for: playlist.appendingPathExtension("mp4"))
         XCTAssertEqual(cache.cachedLocalClip(for: hls), joined)
+    }
+
+    // MARK: - Offline: which clip belongs to which track
+
+    private func songClip() throws -> (artwork: CanvasArtwork, url: URL) {
+        let artwork = CanvasArtwork(url: "https://clips.test/song.mp4", title: "Song", artist: "Artist")
+        return (artwork, try XCTUnwrap(URL(string: artwork.url)))
+    }
+
+    /// The clip is found again by the track alone, with no network, once its file is on disk.
+    func testARememberedClipIsFoundByTrackOnceItsFileIsOnDisk() throws {
+        let cache = try cache()
+        let (artwork, url) = try songClip()
+        cache.remember(artwork, forTrack: "song|artist")
+        XCTAssertNil(cache.remembered(forTrack: "song|artist"), "no file yet, nothing to play")
+
+        cache.store(Data([1]), for: url)
+        XCTAssertEqual(cache.remembered(forTrack: "song|artist"), artwork)
+        XCTAssertNil(cache.remembered(forTrack: "other|artist"))
+    }
+
+    func testARememberedClipSurvivesARelaunch() throws {
+        let directory = try makeTemporaryDirectory()
+        let (artwork, url) = try songClip()
+        let first = CanvasClipCache(directory: directory)
+        first.remember(artwork, forTrack: "song|artist")
+        first.store(Data([1]), for: url)
+        XCTAssertEqual(CanvasClipCache(directory: directory).remembered(forTrack: "song|artist"), artwork)
+    }
+
+    /// The record is not a clip: it is not counted against the limit, and `clear()` takes it too.
+    func testTheRecordIsNoClipAndClearTakesIt() throws {
+        let cache = try cache()
+        let (artwork, url) = try songClip()
+        cache.remember(artwork, forTrack: "song|artist")
+        XCTAssertEqual(cache.currentBytes, 0)
+        cache.store(Data("x".utf8), for: url)
+        XCTAssertEqual(cache.currentBytes, 1)
+
+        cache.clear()
+        XCTAssertNil(cache.remembered(forTrack: "song|artist"))
+        XCTAssertEqual(cache.currentBytes, 0)
+    }
+
+    /// The clip used least goes first, and with it the track's way back to it.
+    func testAnEvictedClipIsForgotten() throws {
+        let cache = try cache(limitBytes: 10)
+        let old = CanvasArtwork(url: "https://clips.test/old.mp4")
+        let new = CanvasArtwork(url: "https://clips.test/new.mp4")
+        cache.remember(old, forTrack: "old")
+        cache.remember(new, forTrack: "new")
+        let oldFile = try XCTUnwrap(cache.store(Data("12345678".utf8), for: try XCTUnwrap(URL(string: old.url))))
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date.distantPast], ofItemAtPath: oldFile.path(percentEncoded: false))
+        cache.store(Data("12345678".utf8), for: try XCTUnwrap(URL(string: new.url)))
+
+        XCTAssertNil(cache.remembered(forTrack: "old"))
+        XCTAssertEqual(cache.remembered(forTrack: "new"), new)
+    }
+
+    /// An Apple clip joined into one local file earlier plays from disk, no stream and no request.
+    func testAJoinedHLSClipIsServedFromDiskByTheFetch() async throws {
+        let stub = URLProtocolStub()
+        let cache = try cache()
+        let playlist = try XCTUnwrap(URL(string: "https://clips.test/b.m3u8"))
+        let artwork = CanvasArtwork(url: playlist.absoluteString)
+        cache.remember(artwork, forTrack: "b")
+        XCTAssertNil(cache.remembered(forTrack: "b"), "not joined yet")
+
+        let joined = cache.store(Data([2]), for: playlist.appendingPathExtension("mp4"))
+        let served = await cache.fetchClip(for: artwork, session: stub.makeSession())
+        XCTAssertEqual(served, joined)
+        XCTAssertTrue(stub.requests.isEmpty)
+        XCTAssertEqual(cache.remembered(forTrack: "b"), artwork)
+    }
+
+    // MARK: - Offline answers
+
+    /// A clip found is kept for the track; with nothing found, the kept clip answers once its
+    /// file is on disk, and only for that track.
+    func testKeepingAnswersOfflineFromTheKeptClip() throws {
+        let cache = try cache()
+        let song = Song(videoId: "v1", title: "Blinding Lights", artist: "The Weeknd", albumName: "After Hours")
+        let clip = CanvasArtwork(url: "https://clips.test/bl.mp4", title: "Blinding Lights", artist: "The Weeknd")
+
+        XCTAssertEqual(cache.keeping(clip, for: song), clip)
+        XCTAssertNil(cache.keeping(nil, for: song), "no file yet, nothing to play")
+
+        cache.store(Data([1]), for: try XCTUnwrap(URL(string: clip.url)))
+        XCTAssertEqual(cache.keeping(nil, for: song), clip)
+        let other = Song(videoId: "v2", title: "Save Your Tears", artist: "The Weeknd")
+        XCTAssertNil(cache.keeping(nil, for: other))
+        let anotherCut = Song(videoId: "v3", title: "Blinding Lights", artist: "The Weeknd")
+        XCTAssertEqual(cache.keeping(nil, for: anotherCut), clip, "another cut of the same song finds it")
+    }
+
+    func testKeepingLeavesLocalFilesWithoutIdentityAlone() throws {
+        let cache = try cache()
+        let clip = CanvasArtwork(url: "https://clips.test/bl.mp4")
+        let local = Song(videoId: "", title: "Home Recording", artist: "Me", localPath: "/music/take1.mp3")
+        XCTAssertNil(cache.keeping(nil, for: local))
+        XCTAssertEqual(cache.keeping(clip, for: local), clip)
+        XCTAssertNil(cache.remembered(forTrack: "home recording|me"), "nothing is kept for it")
     }
 }
