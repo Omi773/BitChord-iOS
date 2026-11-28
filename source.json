@@ -32,8 +32,8 @@
           "date": "2026-11-28",
           "localizedDescription": "Added:\n• Apple Music details in search. Songs in search results now show Apple Music's title, artist, album, cover art, length and explicit tag instead of YouTube's. Songs Apple Music doesn't list are left out of the results. Playback still comes from YouTube.\n• Credits. Press and hold a song to see its writers, album, release date, genre, label, copyright and ISRC under the song's name.\n• Sharper covers. Songs matched with Apple Music use its cover art, which stays crisp on the full player and the lock screen.\nChanged:\n• Songs that are uploaded twice under different video ids now show once in search.\n• If Apple Music can't be reached when you search, the songs are shown as YouTube sent them instead of an empty list.\n• The Videos tab, Albums, Artists, Playlists and the live results while you type still use YouTube's details.",
           "downloadURL": "https://github.com/Omi773/BitChord-iOS/releases/download/v0.1.5/BitChord-0.1.5-unsigned.ipa",
-          "size": 55277585,
-          "sha256": "da344852cf10207ce65c13e51d1dad277db681d09541235685138efcbfddfe13",
+          "size": 55277588,
+          "sha256": "fd127f35b483839f1b241745a6d1f91fc33ef9f896e05d0d5020f98dd19552e3",
           "minOSVersion": "17.0"
         },
         {
