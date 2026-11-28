@@ -7,6 +7,10 @@ extension AudioPlayerEngine {
     static let swapLead: TimeInterval = 2
     /// The longest a swap holds the standby deck before it falls back to a cut.
     static let swapDeadline: Duration = .seconds(8)
+    /// How many times the playhead may overtake the cue before the swap gives up and cuts over.
+    /// Each re-cue is a zero-tolerance seek on the main thread; on a lossless copy still being
+    /// fetched through the cache loader, repeating them is what froze the UI.
+    static let swapMaxRecues = 2
     /// The crossover between the two copies once both are sounding: short enough to hide nothing,
     /// long enough not to click.
     static let swapFade: TimeInterval = 0.08
@@ -83,8 +87,23 @@ extension AudioPlayerEngine {
         guard let entry = try? await makeEntry(for: item, on: deck, preciselyTimed: true) else { return false }
         var lead = Self.swapLead
         var cue: TimeInterval?
+        var recues = 0
+        // Seat the copy on the deck once, with no seek: seeking an item that hasn't opened yet
+        // blocks the main thread on the cache loader.
+        if deck.current !== entry {
+            deck.setCurrent(entry, at: 0)
+            deck.pause()
+            deck.volume = 0
+            deck.rate = rate
+        }
         while ContinuousClock.now < deadline {
             guard !Task.isCancelled, currentItem?.id == replacing, deck === standby else { return false }
+            // Not open yet: wait for it without touching the deck.
+            if entry.playerItem.status != .readyToPlay {
+                if entry.playerItem.status == .failed || deck.isIdle { return false }
+                guard (try? await Task.sleep(for: .milliseconds(25))) != nil else { return false }
+                continue
+            }
             // Paused (nothing to hear: the cut is as good), or the copy failed to load: no point
             // waiting out the deadline.
             if !playWhenReady || (cue != nil && deck.isIdle) { return false }
@@ -96,7 +115,9 @@ extension AudioPlayerEngine {
             if let target = cue, deck.current === entry, target - at <= lead + 1 {
                 let late = at - (target - latency)
                 if late >= Self.swapSlack || (late >= 0 && !deck.isReadyToPlay) {
-                    // The playhead got there first: cue further ahead.
+                    // The playhead got there first: cue further ahead, a bounded number of times.
+                    recues += 1
+                    if recues > Self.swapMaxRecues { return false }
                     lead = min(lead * 2, 6)
                     cue = nil
                     continue
@@ -114,7 +135,7 @@ extension AudioPlayerEngine {
                 deck.pause()
                 deck.volume = 0
                 deck.rate = rate
-                if deck.current === entry { deck.seek(to: next) } else { deck.setCurrent(entry, at: next) }
+                deck.seek(to: next)
                 deck.preroll()
             }
             guard (try? await Task.sleep(for: .milliseconds(10))) != nil else { return false }
