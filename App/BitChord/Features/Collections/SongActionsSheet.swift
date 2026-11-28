@@ -78,6 +78,12 @@ struct SongActionsSheet: View {
         SheetTrackHeader(song: song, subtitleColor: palette.onBackgroundVariantColor)
         SheetDivider(color: palette.dividerColor)
 
+        if let credits = song.credits, !credits.isEmpty {
+            SongCreditsBlock(credits: credits, album: song.albumName,
+                             valueColor: palette.onBackgroundColor, labelColor: palette.onBackgroundVariantColor)
+            SheetDivider(color: palette.dividerColor)
+        }
+
         versionRows(palette: palette)
 
         if store.service.isSignedIn && !isOffline {
