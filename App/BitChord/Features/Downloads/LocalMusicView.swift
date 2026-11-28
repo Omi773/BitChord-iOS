@@ -32,6 +32,8 @@ struct LocalMusicView: View {
     /// The three tabs, kept until the songs, the sort or the filter change: a selection toggled or
     /// the playing row moving on re-runs the body, and must not sort and group the folder again.
     @State private var listings = ViewMemo<LocalMusicListing.Input, LocalMusicListing>()
+    /// The bottom safe area: the tab bar and the mini player, which the lists scroll behind.
+    @State private var barInset: CGFloat = 0
     @Environment(AppModel.self) private var model
     @Environment(PlayerController.self) private var player
     @Environment(AppRouter.self) private var router
@@ -81,10 +83,17 @@ struct LocalMusicView: View {
                 if tab != state.tab { Haptics.shared.play(.select) }
                 withAnimation(.snappy(duration: 0.3)) { state.select(tab) }
             }
+            // The lists run on under the tab bar and the mini player, so the glass shows them
+            // scrolling behind it instead of a solid strip. The clip has to reach under the bars
+            // too (a plain `.clipped()` stopped at the safe area), and the last rows are given back
+            // the room the bars take as scroll margin.
             content(listing)
+                .contentMargins(.bottom, barInset + 12, for: .scrollContent)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipped()
+                .ignoresSafeArea(.container, edges: .bottom)
         }
+        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { barInset = $0 }
         .animation(.snappy(duration: 0.25), value: state.isSelecting)
         .background(Color(.systemBackground))
         #if DEBUG

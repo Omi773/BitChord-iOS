@@ -7,4 +7,5 @@
 
 ### Changed
 - Removed the blank space under the last row of Settings, Library, History and artist pages. The version line now sits right above the mini player.
+- Fixed the solid strip behind the mini player and tab bar on the On Device folders (Downloads and Local Music). The lists now scroll behind the glass.
 - On iOS 17 to 25 the mini player and sheets look the same as before.
