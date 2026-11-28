@@ -323,6 +323,19 @@ public final class DownloadLibrary {
     func rememberImported(_ record: SavedTrackRecord) {
         saved[record.videoId] = record.path
         records[record.videoId] = record
+        if defersPersist { unsaved = true } else { persist() }
+    }
+
+    /// While true, imports are kept in memory and written out together by ``flush()``. A folder
+    /// scan adds hundreds of tracks in a row, and rewriting the whole library file for each one
+    /// is what froze the lists.
+    var defersPersist = false
+    private var unsaved = false
+
+    /// Writes the library out if imports are waiting.
+    func flush() {
+        guard unsaved else { return }
+        unsaved = false
         persist()
     }
 

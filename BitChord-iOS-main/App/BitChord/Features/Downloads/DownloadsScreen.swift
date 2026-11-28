@@ -44,6 +44,13 @@ struct DownloadsScreen: View {
         .navigationTitle(folder.title)
         .navigationBarTitleDisplayMode(.inline)
         .task(id: service.libraryVersion) {
+            // The first listing is immediate. Later ones wait for the changes to pause: a folder
+            // scan adds tracks one after another, and relisting thousands of rows for each would
+            // keep the list from scrolling.
+            if loaded {
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled else { return }
+            }
             let listed = await service.songs(in: folder)
             // A newer change has started its own listing; this one's rows are already stale.
             guard !Task.isCancelled else { return }

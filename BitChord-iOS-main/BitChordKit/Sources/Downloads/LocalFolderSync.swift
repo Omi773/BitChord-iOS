@@ -157,6 +157,11 @@ public final class LocalFolderSync {
         var dirty = false
         let importer = LocalMusicImporter(library: library)
         var processed = 0
+        library.defersPersist = true
+        defer {
+            library.defersPersist = false
+            library.flush()
+        }
 
         for file in listing {
             if Task.isCancelled { break }
@@ -176,7 +181,11 @@ public final class LocalFolderSync {
             if id != nil { if previous?.videoId != nil { report.updated += 1 } else { report.added += 1 } }
             dirty = true
             processed += 1
-            if processed % 10 == 0 { persist() }
+            if processed % 20 == 0 {
+                // The library first, so the manifest never names a track the file doesn't have.
+                library.flush()
+                persist()
+            }
         }
 
         // Only a pass that read the whole listing may conclude that a file is gone.
@@ -191,7 +200,10 @@ public final class LocalFolderSync {
                 dirty = true
             }
         }
-        if dirty { persist() }
+        if dirty {
+            library.flush()
+            persist()
+        }
         return report
     }
 
