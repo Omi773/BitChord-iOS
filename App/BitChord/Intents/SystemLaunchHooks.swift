@@ -7,6 +7,10 @@ extension AppDelegate {
     /// app next comes to the front.
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         MainActor.assumeIsolated {
+            // A play tap in Control Center, on headphones or in a car can relaunch the app in
+            // the background with no window. Build the player right away so the play button
+            // has something to answer it (the window, when it opens, reuses the same app).
+            _ = SystemAppAccess.model()
             SharedLinkInbox.shared.start()
             WidgetLanguageMirror.shared.start()
             #if DEBUG

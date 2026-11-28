@@ -16,19 +16,6 @@ struct BitChordApp: App {
 
 /// UIKit callbacks SwiftUI has no modifier for.
 final class AppDelegate: NSObject, UIApplicationDelegate {
-    /// A play tap in Control Center, on headphones or in a car can relaunch the app in the
-    /// background with no window. Build the player right away so the play button has something
-    /// to answer it (the window, when it opens, reuses the same app).
-    func application(
-        _ application: UIApplication,
-        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
-    ) -> Bool {
-        MainActor.assumeIsolated {
-            _ = SystemAppAccess.model()
-        }
-        return true
-    }
-
     /// Finished background downloads wake the app here; the download queue takes them over. A wake
     /// that launched the process has no window and so no model yet, which ``SystemAppAccess`` builds.
     func application(
