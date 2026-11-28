@@ -10,7 +10,7 @@
 
 <br/>
 
-[![Version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fbitchord.hero154.com%2Fsource.json&query=%24.apps%5B0%5D.versions%5B0%5D.version&label=version&style=for-the-badge&labelColor=0d1117&color=e5404f)](#install)
+[![Version](https://img.shields.io/github/v/release/Omi773/BitChord-iOS?style=for-the-badge&labelColor=0d1117&color=e5404f&label=version)](https://github.com/Omi773/BitChord-iOS/releases/latest)
 [![License](https://img.shields.io/github/license/Omi773/BitChord-iOS?style=for-the-badge&labelColor=0d1117)](LICENSE)
 [![Platform](https://img.shields.io/badge/iOS-17%2B-0d1117?style=for-the-badge)](#requirements)
 
@@ -91,18 +91,12 @@ Where iOS cannot do what Android does, the port uses the closest iOS equivalent 
 
 ## Install
 
-BitChord is distributed as an IPA through a sideloading source.
+BitChord is not on the App Store. Each release on the [Releases page](https://github.com/Omi773/BitChord-iOS/releases/latest) carries an IPA, `BitChord-<version>-unsigned.ipa`.
 
-1. Install AltStore, SideStore or another app that reads AltStore sources.
-2. Add this source:
+1. Download the IPA from the latest release.
+2. Open it in a sideloading app such as Feather, ESign, SideStore, AltStore or Sideloadly. It re-signs the app with your own Apple ID and installs it.
 
-   ```
-   https://bitchord.hero154.com/source.json
-   ```
-
-3. Install BitChord from the source.
-
-To update, install the new version over the old one. Downloads, library and settings carry over.
+The IPA is not signed for your device, so it cannot be installed directly. To update, install the new version over the old one. Downloads, library and settings carry over.
 
 ## Building from source
 

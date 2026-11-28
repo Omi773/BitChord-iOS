@@ -10,7 +10,7 @@ labels: bug
 For example: iPhone 15, iOS 18.1.
 
 **App version**
-The version shown at the bottom of Settings, for example 1.0.2.
+The version shown at the bottom of Settings, for example 0.1.0.
 
 **Steps to reproduce**
 1.
