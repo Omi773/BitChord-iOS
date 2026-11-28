@@ -61,7 +61,7 @@ final class PlayerCanvasModel {
     ///
     /// - Parameter allowed: the switch and the Wi-Fi-only rule (``CanvasPolicy``) together.
     func load(for song: Song?, allowed: Bool, spotifyFirst: Bool, lookup: PlayerCanvasLookup) async {
-        guard let song, allowed, song.localUri == nil else {
+        guard let song, allowed else {
             setCanvas(nil)
             identity = nil
             return

@@ -114,14 +114,17 @@ final class CurrentTrackCanvasTests: XCTestCase {
         XCTAssertTrue(RecordingURLProtocol.requests.isEmpty, "no download was started")
     }
 
-    /// A local song carries its own audio and no catalogue canvas; the rule the player screen
-    /// follows applies to the lock screen too. A lookup miss publishes nothing but a nil.
-    func testALocalSongNeverAsksForAClip() async throws {
-        let (service, sink, _) = makeService()
+    /// A local song is looked up like any other, by its title, artist and album tags; a file with
+    /// no title or artist answers with a miss inside the lookup itself.
+    func testALocalSongIsLookedUpLikeAnyOther() async throws {
+        try XCTSkipUnless(carriesAnAnimatedCover, "this runtime takes no animated artwork")
+        let lookup = CountingLookup(clip: nil)
+        let (service, sink, _) = makeService(lookup: lookup)
         var local = song
         local.localUri = "file:///music/a.m4a"
         await service.update(song: local, allowed: true, spotifyFirst: false)
-        XCTAssertEqual(sink.seen, [[]], "only the drop, never a clip")
+        XCTAssertEqual(lookup.lookups, 1, "the tags are searched on")
+        XCTAssertEqual(sink.seen, [[]], "a miss publishes only the drop")
     }
 
     /// A square clip already on disk goes straight out: the published file is the cache's local

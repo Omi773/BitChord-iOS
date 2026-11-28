@@ -162,12 +162,12 @@ final class CurrentTrackCanvas {
     func update(itemID: String? = nil, song: Song?, allowed: Bool, spotifyFirst: Bool) async {
         let key = Self.key(itemID: itemID, song: song, allowed: allowed, spotifyFirst: spotifyFirst)
         rekey(key)
-        // Nothing without canvas: the switch off, Wi-Fi-only on a metered network, or a local
-        // file (the same rule the player screen's canvas follows). Nothing at all is reached,
-        // let alone downloaded.
+        // Nothing without canvas: the switch off, or Wi-Fi-only on a metered network. Nothing
+        // at all is reached, let alone downloaded.
         guard let song else { diagnostic.decision = "no song"; return }
         guard allowed else { diagnostic.decision = "skipped: canvas off or Wi-Fi-only on a metered network"; return }
-        guard song.localUri == nil else { diagnostic.decision = "skipped: a local file"; return }
+        // A local file is looked up like any other track, by its title, artist and album tags;
+        // the lookup itself returns nothing when a file has no title or artist to search on.
         // Nor below iOS 26, where the system takes no animated artwork at all: resolving here
         // would only spend downloads the dictionary has nowhere to put.
         guard #available(iOS 26.0, *) else { diagnostic.decision = "skipped: iOS below 26"; return }
